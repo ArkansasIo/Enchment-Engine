@@ -1,0 +1,21 @@
+[
+  {
+    "id": "ironwood_helm",
+    "type": "helm",
+    "set": "Ironwood",
+    "level": 5,
+    "armor": 5,
+    "rarity": "uncommon",
+    "price": 180
+  },
+  {
+    "id": "cathedral_plate",
+    "type": "chest",
+    "set": "Cathedral",
+    "level": 10,
+    "armor": 10,
+    "rarity": "rare",
+    "price": 600
+  }
+  // ... all armor sets and pieces
+]

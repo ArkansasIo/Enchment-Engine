@@ -1,0 +1,21 @@
+[
+  {
+    "id": "bastion_disk",
+    "type": "shield",
+    "level": 6,
+    "block": 7,
+    "blockChance": 0.16,
+    "rarity": "rare",
+    "price": 250
+  },
+  {
+    "id": "voidglass_parry_shield",
+    "type": "shield",
+    "level": 12,
+    "block": 13,
+    "blockChance": 0.22,
+    "rarity": "epic",
+    "price": 800
+  }
+  // ... all shield names
+]

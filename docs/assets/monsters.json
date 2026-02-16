@@ -1,0 +1,37 @@
+[
+  {
+    "id": "bramblehart_stag",
+    "type": "beast",
+    "biome": "forest",
+    "atlasRect": [0,0,16,16],
+    "pivot": [0.5,0.85],
+    "hitbox": [12,9],
+    "anim": {
+      "idle": {"fps": 6, "frames": 4},
+      "walk": {"fps": 8, "frames": 6},
+      "attack": {"fps": 10, "frames": 6},
+      "die": {"fps": 6, "frames": 6}
+    },
+    "level": 3,
+    "stats": {"HP": 54, "ATK": 15, "DEF": 7},
+    "lootTableId": "beast_common"
+  },
+  {
+    "id": "frosthorn_elk",
+    "type": "beast",
+    "biome": "mountain",
+    "atlasRect": [16,0,16,16],
+    "pivot": [0.5,0.85],
+    "hitbox": [12,9],
+    "anim": {
+      "idle": {"fps": 6, "frames": 4},
+      "walk": {"fps": 8, "frames": 6},
+      "attack": {"fps": 10, "frames": 6},
+      "die": {"fps": 6, "frames": 6}
+    },
+    "level": 5,
+    "stats": {"HP": 90, "ATK": 23, "DEF": 11},
+    "lootTableId": "beast_rare"
+  }
+  // ... more monsters, including all fantasy names provided
+]

@@ -1,0 +1,13 @@
+{
+  "prefixes": ["Rusty", "Soldier’s", "Rune-etched", "Gilded", "Abyssal", "Verdant", "Frostbound", "Sunlit", "Void-touched"],
+  "suffixes": ["of Embers", "of the Warden", "of Echoes", "of the Deep", "of Shards", "of Cinders", "of Dawn", "of Ruin", "of Oaths"],
+  "rarityTable": [
+    {"rarity": "common", "weight": 70},
+    {"rarity": "uncommon", "weight": 20},
+    {"rarity": "rare", "weight": 8},
+    {"rarity": "epic", "weight": 1.8},
+    {"rarity": "legendary", "weight": 0.2}
+  ],
+  "eliteBonus": {"rare": 1.5, "epic": 1.5},
+  "bossBonus": {"guaranteedRarity": "rare", "extraRolls": 1}
+}

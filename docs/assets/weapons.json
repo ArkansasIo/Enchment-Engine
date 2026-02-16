@@ -1,0 +1,27 @@
+[
+  {
+    "id": "dawncleaver",
+    "type": "sword",
+    "rarity": "rare",
+    "level": 7,
+    "baseDamage": 13,
+    "rarityMult": 1.25,
+    "finalDamage": 16,
+    "price": 420,
+    "prefixes": ["Rune-etched", "Soldier’s", "Frostbound"],
+    "suffixes": ["of Echoes", "of Dawn", "of Shards"]
+  },
+  {
+    "id": "skullsplitter",
+    "type": "axe",
+    "rarity": "epic",
+    "level": 12,
+    "baseDamage": 22,
+    "rarityMult": 1.5,
+    "finalDamage": 33,
+    "price": 1200,
+    "prefixes": ["Gilded", "Abyssal", "Sunlit"],
+    "suffixes": ["of Ruin", "of Cinders", "of Oaths"]
+  }
+  // ... all weapon names and variants
+]

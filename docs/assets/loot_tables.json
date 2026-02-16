@@ -1,0 +1,18 @@
+[
+  {
+    "lootTableId": "beast_common",
+    "entries": [
+      {"itemId": "iron_shard", "weight": 60, "min": 1, "max": 2},
+      {"itemId": "minor_healing_draught", "weight": 20, "min": 1, "max": 1},
+      {"itemId": "lucky_charm_token", "weight": 5, "min": 1, "max": 1}
+    ]
+  },
+  {
+    "lootTableId": "beast_rare",
+    "entries": [
+      {"itemId": "moonsteel_ingot", "weight": 30, "min": 1, "max": 1},
+      {"itemId": "greater_healing_tonic", "weight": 10, "min": 1, "max": 1}
+    ]
+  }
+  // ... more tables for monsters, bosses, etc.
+]
