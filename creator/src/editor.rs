@@ -388,6 +388,21 @@ impl Editor {
         );
     }
 
+    fn show_ide_panel_dialog(
+        &self,
+        ui: &mut TheUI,
+        ctx: &mut TheContext,
+        kind: crate::ide_panels::IdePanelKind,
+    ) {
+        let snapshot = crate::ide_panels::IdePanelSnapshot::from_editor_state(
+            &self.project,
+            &self.server_ctx,
+            self.last_generated_town.is_some(),
+            self.last_generated_mmorpg.is_some(),
+        );
+        crate::ide_panels::show_ide_panel_dialog(ui, ctx, kind, &snapshot);
+    }
+
     fn tool_group_label(&self, tool_name: &str, fallback: &str) -> String {
         match tool_name {
             "Select Tool" => "Modes / Select".to_string(),
@@ -497,6 +512,19 @@ impl Editor {
         add_quick_button("QuickGuiPause", "play-pause", "Pause game");
         add_quick_button("QuickGuiStop", "stop-fill", "Stop game");
         add_quick_button("QuickGuiHelp", "question-mark", "Open help");
+        add_quick_button(
+            "QuickWindowContentBrowser",
+            "folder",
+            "Open Content Browser panel",
+        );
+        add_quick_button(
+            "QuickWindowOutliner",
+            "list",
+            "Open World Outliner panel",
+        );
+        add_quick_button("QuickWindowDetails", "gear", "Open Details panel");
+        add_quick_button("QuickWindowLog", "file-text", "Open Output Log panel");
+        add_quick_button("QuickWindowBlueprint", "code", "Open Blueprint panel");
         add_quick_button("QuickThemeDark", "dark_tabbar_selected", "Dark theme preset");
         add_quick_button("QuickThemeLight", "dark_tabbar_hover", "Light theme preset");
         add_quick_button("QuickThemeSlate", "dark_tabbar_normal", "Slate theme preset");
@@ -923,6 +951,24 @@ impl Editor {
             "LeftAction::MenuIde::FeatureMatrix",
             "list",
             "Open IDE feature matrix",
+        );
+        add_left_action(
+            "Window / Content Browser",
+            "LeftAction::MenuWindow::ContentBrowser",
+            "folder",
+            "Open content browser panel",
+        );
+        add_left_action(
+            "Window / World Outliner",
+            "LeftAction::MenuWindow::WorldOutliner",
+            "list",
+            "Open world outliner panel",
+        );
+        add_left_action(
+            "Window / Details",
+            "LeftAction::MenuWindow::Details",
+            "gear",
+            "Open details panel",
         );
         add_left_action(
             "Help / About",
@@ -2241,6 +2287,28 @@ impl TheTrait for Editor {
             TheId::named("MenuIde::FeatureMatrix"),
         ));
 
+        let mut window_menu = TheContextMenu::named("Window".to_string());
+        window_menu.add(TheContextMenuItem::new(
+            "Content Browser".to_string(),
+            TheId::named("MenuWindow::ContentBrowser"),
+        ));
+        window_menu.add(TheContextMenuItem::new(
+            "World Outliner".to_string(),
+            TheId::named("MenuWindow::WorldOutliner"),
+        ));
+        window_menu.add(TheContextMenuItem::new(
+            "Details".to_string(),
+            TheId::named("MenuWindow::Details"),
+        ));
+        window_menu.add(TheContextMenuItem::new(
+            "Output Log".to_string(),
+            TheId::named("MenuWindow::OutputLog"),
+        ));
+        window_menu.add(TheContextMenuItem::new(
+            "Blueprint".to_string(),
+            TheId::named("MenuWindow::Blueprint"),
+        ));
+
         let mut help_menu = TheContextMenu::named("Help".to_string());
         help_menu.add(TheContextMenuItem::new("Docs".to_string(), TheId::named("MenuHelp::Docs")));
         help_menu.add(TheContextMenuItem::new("Examples".to_string(), TheId::named("MenuHelp::Examples")));
@@ -2252,6 +2320,7 @@ impl TheTrait for Editor {
         main_menu.add_context_menu(tools_menu);
         main_menu.add_context_menu(build_menu);
         main_menu.add_context_menu(settings_menu);
+        main_menu.add_context_menu(window_menu);
         main_menu.add_context_menu(help_menu);
 
         menu_canvas.set_widget(main_menu);
@@ -3113,6 +3182,36 @@ impl TheTrait for Editor {
                         workspace_prefs_dirty = true;
                     } else if item_id.name == "MenuIde::FeatureMatrix" {
                         self.show_ide_feature_matrix_dialog(ui, ctx);
+                    } else if item_id.name == "MenuWindow::ContentBrowser" {
+                        self.show_ide_panel_dialog(
+                            ui,
+                            ctx,
+                            crate::ide_panels::IdePanelKind::ContentBrowser,
+                        );
+                    } else if item_id.name == "MenuWindow::WorldOutliner" {
+                        self.show_ide_panel_dialog(
+                            ui,
+                            ctx,
+                            crate::ide_panels::IdePanelKind::WorldOutliner,
+                        );
+                    } else if item_id.name == "MenuWindow::Details" {
+                        self.show_ide_panel_dialog(
+                            ui,
+                            ctx,
+                            crate::ide_panels::IdePanelKind::Details,
+                        );
+                    } else if item_id.name == "MenuWindow::OutputLog" {
+                        self.show_ide_panel_dialog(
+                            ui,
+                            ctx,
+                            crate::ide_panels::IdePanelKind::OutputLog,
+                        );
+                    } else if item_id.name == "MenuWindow::Blueprint" {
+                        self.show_ide_panel_dialog(
+                            ui,
+                            ctx,
+                            crate::ide_panels::IdePanelKind::Blueprint,
+                        );
                     } else if item_id.name == "MenuHelp::Docs" {
                         self.show_help_dialog(ui, ctx);
                     } else if item_id.name == "MenuHelp::Examples" {
@@ -4131,6 +4230,41 @@ impl TheTrait for Editor {
                                 TheId::named("Help"),
                                 TheWidgetState::Clicked,
                             ));
+                            redraw = true;
+                        } else if id.name == "QuickWindowContentBrowser" {
+                            self.show_ide_panel_dialog(
+                                ui,
+                                ctx,
+                                crate::ide_panels::IdePanelKind::ContentBrowser,
+                            );
+                            redraw = true;
+                        } else if id.name == "QuickWindowOutliner" {
+                            self.show_ide_panel_dialog(
+                                ui,
+                                ctx,
+                                crate::ide_panels::IdePanelKind::WorldOutliner,
+                            );
+                            redraw = true;
+                        } else if id.name == "QuickWindowDetails" {
+                            self.show_ide_panel_dialog(
+                                ui,
+                                ctx,
+                                crate::ide_panels::IdePanelKind::Details,
+                            );
+                            redraw = true;
+                        } else if id.name == "QuickWindowLog" {
+                            self.show_ide_panel_dialog(
+                                ui,
+                                ctx,
+                                crate::ide_panels::IdePanelKind::OutputLog,
+                            );
+                            redraw = true;
+                        } else if id.name == "QuickWindowBlueprint" {
+                            self.show_ide_panel_dialog(
+                                ui,
+                                ctx,
+                                crate::ide_panels::IdePanelKind::Blueprint,
+                            );
                             redraw = true;
                         } else if id.name == "QuickThemeDark" {
                             self.theme_preset = "Dark".to_string();

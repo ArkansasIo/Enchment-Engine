@@ -15,6 +15,7 @@ pub mod editor_tools;
 pub mod effectpicker;
 pub mod hud;
 pub mod ide_profile;
+pub mod ide_panels;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod i18n;
 pub mod infoviewer;
