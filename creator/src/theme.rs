@@ -1,7 +1,7 @@
-use serde::{Serialize, Deserialize};
-use egui::{Color32, FontFamily, FontId, Ui, ComboBox, CentralPanel, SidePanel, TopBottomPanel, Context};
+use egui::{Color32, FontId, Ui, ComboBox, Context};
+use rand::Rng;
 
-#[derive(Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Theme {
     pub name: String,
     pub background: Color32,
@@ -31,7 +31,7 @@ impl Theme {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum DockPosition {
     Left,
     Right,
@@ -40,7 +40,7 @@ pub enum DockPosition {
     Floating,
 }
 
-#[derive(Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct PanelLayout {
     pub panel_id: String,
     pub position: DockPosition,
@@ -48,7 +48,7 @@ pub struct PanelLayout {
     pub visible: bool,
 }
 
-#[derive(Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct WorkspaceLayout {
     pub panels: Vec<PanelLayout>,
     pub theme: String,

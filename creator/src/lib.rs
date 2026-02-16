@@ -1,3 +1,4 @@
+pub mod theme;
 #[cfg(not(target_arch = "wasm32"))]
 #[macro_use]
 mod macros;

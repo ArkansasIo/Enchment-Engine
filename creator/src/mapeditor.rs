@@ -1,6 +1,7 @@
 // --- ProceduralRules struct for integration ---
 use serde::{Deserialize, Serialize};
 use std::fs;
+use rand::Rng;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ProceduralRules {
@@ -71,6 +72,7 @@ impl MapEditor {
     /// Example: Generate a procedural name for a dungeon/room using rules
     pub fn generate_procedural_name(&self) -> Option<String> {
         use rand::seq::SliceRandom;
+        use rand::prelude::IndexedRandom;
         let rules = self.procedural_rules.as_ref()?;
         let mut rng = rand::thread_rng();
         let prefix = rules.prefixes.choose(&mut rng)?.clone();
