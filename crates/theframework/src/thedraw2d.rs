@@ -104,10 +104,16 @@ impl TheDraw2D {
         stride: usize,
         color: &[u8; 4],
     ) {
+        if rect.2 == 0 || rect.3 == 0 || stride == 0 {
+            return;
+        }
+
         for y in rect.1..rect.1 + rect.3 {
             for x in rect.0..rect.0 + rect.2 {
                 let i = x * 4 + y * stride * 4;
-                frame[i..i + 4].copy_from_slice(color);
+                if i + 4 <= frame.len() {
+                    frame[i..i + 4].copy_from_slice(color);
+                }
             }
         }
     }
@@ -164,22 +170,27 @@ impl TheDraw2D {
         stride: usize,
         color: &[u8; 4],
     ) {
+        if rect.2 == 0 || rect.3 == 0 || stride == 0 {
+            return;
+        }
+
+        let mut write_pixel = |x: usize, y: usize| {
+            let i = x.saturating_mul(4) + y.saturating_mul(stride).saturating_mul(4);
+            if i + 4 <= frame.len() {
+                frame[i..i + 4].copy_from_slice(color);
+            }
+        };
+
         let y = rect.1;
         for x in rect.0..rect.0 + rect.2 {
-            let mut i = x * 4 + y * stride * 4;
-            frame[i..i + 4].copy_from_slice(color);
-
-            i = x * 4 + (y + rect.3 - 1) * stride * 4;
-            frame[i..i + 4].copy_from_slice(color);
+            write_pixel(x, y);
+            write_pixel(x, y + rect.3 - 1);
         }
 
         let x = rect.0;
         for y in rect.1..rect.1 + rect.3 {
-            let mut i = x * 4 + y * stride * 4;
-            frame[i..i + 4].copy_from_slice(color);
-
-            i = (x + rect.2 - 1) * 4 + y * stride * 4;
-            frame[i..i + 4].copy_from_slice(color);
+            write_pixel(x, y);
+            write_pixel(x + rect.2 - 1, y);
         }
     }
 
@@ -192,22 +203,27 @@ impl TheDraw2D {
         color: &[u8; 4],
         border: usize,
     ) {
+        if rect.2 == 0 || rect.3 == 0 || stride == 0 {
+            return;
+        }
+
+        let mut write_pixel = |x: usize, y: usize| {
+            let i = x.saturating_mul(4) + y.saturating_mul(stride).saturating_mul(4);
+            if i + 4 <= frame.len() {
+                frame[i..i + 4].copy_from_slice(color);
+            }
+        };
+
         let y = rect.1;
         for x in rect.0 + border..rect.0 + rect.2 - border {
-            let mut i = x * 4 + y * stride * 4;
-            frame[i..i + 4].copy_from_slice(color);
-
-            i = x * 4 + (y + rect.3 - 1) * stride * 4;
-            frame[i..i + 4].copy_from_slice(color);
+            write_pixel(x, y);
+            write_pixel(x, y + rect.3 - 1);
         }
 
         let x = rect.0;
         for y in rect.1 + border..rect.1 + rect.3 - border {
-            let mut i = x * 4 + y * stride * 4;
-            frame[i..i + 4].copy_from_slice(color);
-
-            i = (x + rect.2 - 1) * 4 + y * stride * 4;
-            frame[i..i + 4].copy_from_slice(color);
+            write_pixel(x, y);
+            write_pixel(x + rect.2 - 1, y);
         }
     }
 

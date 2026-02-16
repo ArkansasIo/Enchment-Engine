@@ -167,6 +167,93 @@ impl Editor {
         }
     }
 
+    fn show_help_dialog(&self, ui: &mut TheUI, ctx: &mut TheContext) {
+        let width = 760;
+        let height = 430;
+
+        let mut canvas = TheCanvas::new();
+        canvas.limiter_mut().set_max_size(Vec2::new(width, height));
+
+        let mut layout = TheTextLayout::new(TheId::named("Help Dialog Layout"));
+        layout.set_margin(Vec4::new(14, 14, 14, 14));
+        layout.set_padding(8);
+        layout.limiter_mut().set_max_width(width - 30);
+
+        let mut intro = TheText::new(TheId::named("Help Intro"));
+        intro.set_text("Encheament Engine Help".to_string());
+        layout.add_pair("".to_string(), Box::new(intro));
+
+        let mut usage = TheText::new(TheId::named("Help Usage"));
+        usage.set_text(
+            "Workflow:\n\
+             1) File -> New/Open project\n\
+             2) Pick a tool from left/right bars or Tools menu\n\
+             3) Edit map in viewport (2D/3D)\n\
+             4) Build -> Play/Pause/Stop to test runtime\n\
+             5) File -> Save / Export".to_string(),
+        );
+        layout.add_pair("".to_string(), Box::new(usage));
+
+        let mut shortcuts = TheText::new(TheId::named("Help Shortcuts"));
+        shortcuts.set_text(
+            "Shortcuts:\n\
+             S Selection, V Vertex, L Linedef, E Sector, R Rect, Y Entity,\n\
+             W Terrain, N Render, C Code, D Data.\n\
+             Arrow keys pan, mouse wheel zoom, Esc clears active selection/paste."
+                .to_string(),
+        );
+        layout.add_pair("".to_string(), Box::new(shortcuts));
+
+        let mut options = TheText::new(TheId::named("Help Options"));
+        options.set_text(
+            "Options & Theme:\n\
+             Use right settings panel or View/Settings menus to change theme,\n\
+             snap-to-grid, grid visibility, gizmos, fps, tick rate, and toolbar layout."
+                .to_string(),
+        );
+        layout.add_pair("".to_string(), Box::new(options));
+
+        canvas.set_layout(layout);
+        ui.show_dialog("Help", canvas, vec![TheDialogButtonRole::Accept], ctx);
+    }
+
+    fn show_about_dialog(&self, ui: &mut TheUI, ctx: &mut TheContext) {
+        let width = 620;
+        let height = 280;
+
+        let mut canvas = TheCanvas::new();
+        canvas.limiter_mut().set_max_size(Vec2::new(width, height));
+
+        let mut layout = TheTextLayout::new(TheId::named("About Dialog Layout"));
+        layout.set_margin(Vec4::new(14, 14, 14, 14));
+        layout.set_padding(8);
+        layout.limiter_mut().set_max_width(width - 30);
+
+        let mut title = TheText::new(TheId::named("About Title"));
+        title.set_text("Encheament Engine Creator v0.8.100".to_string());
+        layout.add_pair("".to_string(), Box::new(title));
+
+        let mut body = TheText::new(TheId::named("About Body"));
+        body.set_text(
+            "A retro-style 2D/3D RPG creator with map editing, scripting,\n\
+             content pipelines, runtime simulation, and export stubs.\n\n\
+             This build includes:\n\
+             - Main menu + submenu system\n\
+             - Top/left/right toolbars\n\
+             - Theme and editor options panel\n\
+             - In-editor help and about dialogs"
+                .to_string(),
+        );
+        layout.add_pair("".to_string(), Box::new(body));
+
+        let mut links = TheText::new(TheId::named("About Links"));
+        links.set_text("Website: https://eldiron.com".to_string());
+        layout.add_pair("".to_string(), Box::new(links));
+
+        canvas.set_layout(layout);
+        ui.show_dialog("About Encheament Engine", canvas, vec![TheDialogButtonRole::Accept], ctx);
+    }
+
 }
 
 impl TheTrait for Editor {
@@ -502,8 +589,7 @@ impl TheTrait for Editor {
         if let Ok(toollist) = TOOLLIST.read() {
             for tool in &toollist.game_tools {
                 let quick_id = format!("TopTool::{}", tool.id().name);
-                let mut button =
-                    TheToolListButton::new(TheId::named(&quick_id));
+                let mut button = TheMenubarButton::new(TheId::named(&quick_id));
                 button.set_icon_name(tool.icon_name());
                 button.set_status_text(&format!("Activate {}", tool.info()));
                 top_quick_layout.add_widget(Box::new(button));
@@ -585,7 +671,7 @@ impl TheTrait for Editor {
         right_tool_layout.set_padding(1);
 
         let mut add_quick_button = |id: &str, icon: &str, status: &str| {
-            let mut button = TheToolListButton::new(TheId::named(id));
+            let mut button = TheMenubarButton::new(TheId::named(id));
             button.set_icon_name(icon.to_string());
             button.set_status_text(status);
             right_tool_layout.add_widget(Box::new(button));
@@ -609,8 +695,7 @@ impl TheTrait for Editor {
         if let Ok(toollist) = TOOLLIST.read() {
             for tool in &toollist.game_tools {
                 let quick_id = format!("RightTool::{}", tool.id().name);
-                let mut button =
-                    TheToolListButton::new(TheId::named(&quick_id));
+                let mut button = TheMenubarButton::new(TheId::named(&quick_id));
                 button.set_icon_name(tool.icon_name());
                 button.set_status_text(&format!("Activate {}", tool.info()));
                 right_tool_layout.add_widget(Box::new(button));
@@ -1402,14 +1487,11 @@ impl TheTrait for Editor {
                             TheValue::Bool(self.option_show_gizmos),
                         );
                     } else if item_id.name == "MenuHelp::Docs" {
-                        _ = open::that("https://www.eldiron.com/docs");
+                        self.show_help_dialog(ui, ctx);
                     } else if item_id.name == "MenuHelp::Examples" {
                         _ = open::that("https://www.eldiron.com/docs/games");
                     } else if item_id.name == "MenuHelp::About" {
-                        ctx.ui.send(TheEvent::SetStatusText(
-                            TheId::empty(),
-                            "Encheament Engine: integrated 2D/3D editor shell.".to_string(),
-                        ));
+                        self.show_about_dialog(ui, ctx);
                     } else if item_id.name == "MenuBuild::Export2D" {
                         ctx.ui.save_file_requester(
                             TheId::named_with_id("Export2DPackage", Uuid::new_v4()),
@@ -2305,6 +2387,9 @@ impl TheTrait for Editor {
 
                     if id.name == "Help" {
                         self.server_ctx.help_mode = state == TheWidgetState::Clicked;
+                        if state == TheWidgetState::Clicked {
+                            self.show_help_dialog(ui, ctx);
+                        }
                     }
                     if id.name == "GameInput" {
                         self.server_ctx.game_input_mode = state == TheWidgetState::Clicked;

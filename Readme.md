@@ -1,3 +1,11 @@
+# Developer
+
+This project is developed by **Stephen Deline Jr**.
+
+# Version
+
+Current version: 0.8.100
+
 # Enchentment Engine: Next-Generation Classical RPG Creation Suite
 **Enchentment Engine** is a cross-platform, open-source engine for classic retro role-playing games (RPGs). It empowers you to build 2D, isometric, and first-person RPGs reminiscent of the 1980s and 1990s, while supporting modern features like multiplayer, procedural content, and more.
 cargo install enchentment_engine-creator
