@@ -102,6 +102,10 @@ impl MainEditor {
                     self.status = "Build (not yet implemented)".to_string();
                 }
                 ui.separator();
+                if ui.button("Plugins").clicked() {
+                    self.status = "Plugins menu (not yet implemented)".to_string();
+                }
+                ui.separator();
                 ui.label(format!("Project: {}", self.project_name));
                 if ui.button("⚙️ Settings").clicked() {
                     self.show_settings = true;

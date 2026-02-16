@@ -90,6 +90,23 @@ cargo install enchentment_engine-client
 ### Linux Dependencies
 Install: `libasound2-dev` `libatk1.0-dev` `libgtk-3-dev`
 
+## Project Milestones & CI/CD
+
+- Automated builds are set up using GitHub Actions. See `.github/workflows/` for configuration.
+- First milestone: Complete core engine loop, rendering, and input subsystems.
+- Error handling is reviewed and improved in all major modules.
+- Core components (Render, Input) are expanded for flexibility and extensibility.
+- Real subsystems (Logging, Input) are implemented and integrated.
+- Architecture and usage are documented throughout the codebase and in this README.
+- A developer/contributor guide is provided in `CONTRIBUTING.md`.
+- Watabou-style map engine is scaffolded with layout, tools, logic, and functions in `engine/map/`.
+
+## Getting Started
+
+- Clone the repository and run `cargo build` to build the engine.
+- See `src/main.rs` for integration demos and usage examples.
+- For contributing, see `CONTRIBUTING.md`.
+
 ## Contributing
 
 ## License
@@ -114,73 +131,80 @@ For more info, visit [enchentmentengine.com](https://enchentmentengine.com)
 - Modular themes, skins, and layouts (dockable toolbars: left, right, top, bottom, floating)
 - Full theme/layout selection and customization in settings
 - Open-source (MIT License)
-![Windows](
 
-**Enchentment Engine** (formerly Eldiron) is a cross-platform creator for classic retro role-playing games (RPGs). Its primary goal is to enable the creation of RPGs reminiscent of the 1980s and 1990s while incorporating modern features such as multiplayer support, procedural content generation, and more.
+## Features
 
+- Modular Unreal-style engine architecture in Rust
+- Core systems: actors, components, world, plugins, subsystems
+- Advanced map engine: procedural, import/export, watabou-style
+- 2D and 3D map visualization (renderers, cameras, overlays)
+- World, kingdom, city, biome, building, place, and planet modules
+- Extensible for procedural generation, editing, and visualization
 
- Enchentment Engine natively supports **2D** (like Ultima 4/5), **isometric** (Diablo-style), and **first-person** (Dungeon Master, Eye of the Beholder) RPGs, allowing developers to craft a variety of experiences effortlessly.
+## Getting Started
 
+- Build: `cargo build`
+- Run: `cargo run`
+- See `DEVELOPER_GUIDE.md` for architecture and usage
 
-Enchentment Engine is open-source and licensed under the **MIT License**.
+## Example
 
-For a more detailed feature overview please visit [
-
-2D Example           | 3D Example
-:-------------------------:|:-------------------------:
-![Enchentment Engine Screenshot](images/hideout2d.png)  |  ![Enchentment Engine Screenshot](images/dungeon3d.png)
-
-## Source Code
-
-
-Enchentment Engine is built on three embedded crates that I have developed over the last years. Each focuses on a specific aspect of the engine and editor, and together they form the foundation of the Enchentment Engine ecosystem.
-
-  Handles cross-platform window creation, user event abstraction, and the custom UI system used by *Enchentment Engine Creator*.
-
-  Started as a software rasterizer for 2D and 3D geometry, but has since evolved into the core game engine. While *SceneVM* now handles most rendering tasks, the software rasterization aspect of Rusterix is still used for example in in-game UI elements.
-
-  An abstracted, layer-based renderer for 2D and 3D built on top of [wGPU](https://wgpu.rs). Each layer can define its own geometry and compute shaders, making SceneVM the main rendering backbone of engine 
-
-
-Over the past five years, Enchentment Engine (formerly Eldiron) has gone through several major iterations. As a result, some parts of the code are in the process of being consolidated or phased out as the project moves toward a cleaner v1 architecture.
-
-
-## Installation
-
-### Pre-built Binaries
-
-Download the latest release for your platform from the [GitHub Releases]
-
-### Install via Cargo
-
-If you have [Rust installed](https://www.rust-lang.org/tools/install), you can install Enchentment Engine Creator and the Client directly from [crates.io](https://crates.io):
-
-```bash
-cargo install enchentment_engine-creator
-cargo install enchentment_engine-client
+```rust
+use engine::map::generator::MapGenerator;
+let map = MapGenerator::generate_basic_map(16, 16);
 ```
 
-### Building from Source
+## AI System Usage Example
 
-Clone the repository and build:
+The engine includes a modular AI system with both a Finite State Machine (FSM) and a Goal-Oriented Planner. Below is a quick usage example, as integrated in `src/main.rs`:
 
-```bash
-git clone 
-cd enchentment_engine
-cargo run --release --package creator
+```rust
+use engine::ai;
+
+fn ai_demo() {
+    // FSM Example
+    let mut fsm = ai::fsm::Machine::new();
+    let idle = ai::fsm::State::new("Idle");
+    let walk = ai::fsm::State::new("Walk");
+    fsm.add_state(idle.clone());
+    fsm.add_state(walk.clone());
+    fsm.add_transition(ai::fsm::Transition::new("Idle", "Walk", "start_walking"));
+    fsm.set_current("Idle");
+    println!("FSM current state: {:?}", fsm.get_current());
+    fsm.update("start_walking");
+    println!("FSM current state after update: {:?}", fsm.get_current());
+
+    // Planner Example
+    let mut plan = ai::planner::Plan::new();
+    plan.add_action(ai::planner::Action::new("MoveTo"));
+    plan.add_action(ai::planner::Action::new("Attack"));
+    plan.execute();
+}
 ```
 
-### Linux Dependencies
+- The FSM manages states and transitions for AI agents.
+- The Planner allows you to queue and execute actions to achieve goals.
 
-Make sure these dependencies are installed: `libasound2-dev` `libatk1.0-dev` `libgtk-3-dev`
+See the `engine/ai/` folder for more details and extend as needed for your game logic.
 
-## License
+## Logging and Input Subsystems
 
+The engine provides basic logging and input handling out of the box:
 
-The source and all assets I commissioned for rpg mmorpg engine are licensed under the MIT.
+```rust
+use engine::core;
 
-Unless explicitly stated otherwise, any contribution intentionally submitted for inclusion in Enchentment Engine, shall be MIT licensed as above, without any additional terms or conditions.
+fn main() {
+    core::logging::log("Engine started");
+    core::input::process_input("KeyPress:W");
+}
+```
 
+- Logging: Use `core::logging::log()` for simple log output.
+- Input: Use `core::input::process_input()` to handle input events.
 
-## Sponsor
+## Contributing
+
+- See `DEVELOPER_GUIDE.md` for guidelines
+- PRs and issues welcome!
 

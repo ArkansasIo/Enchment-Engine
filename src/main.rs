@@ -13,6 +13,11 @@ use plugins::asset_database::AssetDatabasePlugin;
 use plugins::editor_viewport::EditorViewportPlugin;
 use plugins::inspector_hierarchy::InspectorHierarchyPlugin;
 
+mod engine;
+
+use engine::ai;
+use engine::core;
+
 fn main() {
     let mut plugin_manager = PluginManager::new();
     // Register core plugins
@@ -38,4 +43,41 @@ fn main() {
         plugin_manager.broadcast_event(&EngineEvent::FrameEnd);
     }
     plugin_manager.broadcast_event(&EngineEvent::Shutdown);
+
+    // Core system demo
+    {
+        use engine::core::demo::run_demo;
+        run_demo();
+    }
+
+    // Map system demo
+    {
+        use engine::map::demo::run_map_demo;
+        run_map_demo();
+    }
+
+    // AI demo
+    ai_demo();
+    core::logging::log("Engine started");
+    core::input::process_input("KeyPress:W");
+}
+
+fn ai_demo() {
+    // FSM Example
+    let mut fsm = ai::fsm::Machine::new();
+    let idle = ai::fsm::State::new("Idle");
+    let walk = ai::fsm::State::new("Walk");
+    fsm.add_state(idle.clone());
+    fsm.add_state(walk.clone());
+    fsm.add_transition(ai::fsm::Transition::new("Idle", "Walk", "start_walking"));
+    fsm.set_current("Idle");
+    println!("FSM current state: {:?}", fsm.get_current());
+    fsm.update("start_walking");
+    println!("FSM current state after update: {:?}", fsm.get_current());
+
+    // Planner Example
+    let mut plan = ai::planner::Plan::new();
+    plan.add_action(ai::planner::Action::new("MoveTo"));
+    plan.add_action(ai::planner::Action::new("Attack"));
+    plan.execute();
 }

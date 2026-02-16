@@ -71,6 +71,12 @@ pub static SHADEGRIDFX: LazyLock<RwLock<Module>> =
 pub static SHADERBUFFER: LazyLock<RwLock<TheRGBABuffer>> =
     LazyLock::new(|| RwLock::new(TheRGBABuffer::new(TheDim::sized(200, 200))));
 
+const LEFT_ICON_BAR_WIDTH: i32 = 72;
+const LEFT_TOOL_NAMES_WIDTH: i32 = 360;
+const LEFT_TOOL_TEXT_WIDTH: i32 = 230;
+const RIGHT_ICON_BAR_WIDTH: i32 = 56;
+const RIGHT_SETTINGS_WIDTH: i32 = 320;
+
 pub struct Editor {
     project: Project,
     project_path: Option<PathBuf>,
@@ -104,6 +110,24 @@ pub struct Editor {
     option_show_grid: bool,
     option_show_gizmos: bool,
     theme_preset: String,
+    left_toolbar_active_tool: Option<String>,
+    left_group_modes_expanded: bool,
+    left_group_2d_expanded: bool,
+    left_group_3d_expanded: bool,
+    left_group_editor_expanded: bool,
+    towngen_preset: String,
+    towngen_has_river: bool,
+    towngen_has_walls: bool,
+    towngen_last_seed: u64,
+    towngen_auto_bake: bool,
+    overlay_show_town_districts: bool,
+    overlay_show_town_roads: bool,
+    overlay_show_town_landmarks: bool,
+    mmorpg_xp_rate: f32,
+    mmorpg_loot_rate: f32,
+    mmorpg_event_rate: f32,
+    last_generated_town: Option<crate::game_logic::TownMapData>,
+    last_generated_mmorpg: Option<crate::game_logic::StarterRpgMmorpgConfig>,
 }
 
 
@@ -126,13 +150,31 @@ impl Editor {
         if let Some(left_layout) = ui.get_layout("Tool List Layout") {
             left_layout
                 .limiter_mut()
-                .set_max_width(if self.show_left_toolbar { 51 } else { 0 });
+                .set_max_width(if self.show_left_toolbar {
+                    LEFT_ICON_BAR_WIDTH
+                } else {
+                    0
+                });
             left_layout.relayout(ctx);
+        }
+        if let Some(left_names_layout) = ui.get_layout("Left Tool Name Layout") {
+            left_names_layout
+                .limiter_mut()
+                .set_max_width(if self.show_left_toolbar {
+                    LEFT_TOOL_NAMES_WIDTH
+                } else {
+                    0
+                });
+            left_names_layout.relayout(ctx);
         }
         if let Some(right_layout) = ui.get_layout("Right Tool Layout") {
             right_layout
                 .limiter_mut()
-                .set_max_width(if self.show_right_toolbar { 51 } else { 0 });
+                .set_max_width(if self.show_right_toolbar {
+                    RIGHT_ICON_BAR_WIDTH
+                } else {
+                    0
+                });
             right_layout.relayout(ctx);
         }
     }
@@ -158,6 +200,10 @@ impl Editor {
             layout.relayout(ctx);
         }
         if let Some(layout) = ui.get_layout("Tool List Layout") {
+            layout.set_background_color(side_color);
+            layout.relayout(ctx);
+        }
+        if let Some(layout) = ui.get_layout("Left Tool Name Layout") {
             layout.set_background_color(side_color);
             layout.relayout(ctx);
         }
@@ -213,6 +259,16 @@ impl Editor {
         );
         layout.add_pair("".to_string(), Box::new(options));
 
+        let mut town_help = TheText::new(TheId::named("Help TownSystems"));
+        town_help.set_text(
+            "Town + MMO Systems:\n\
+             Tools -> Town Size Presets / Reseed / Regenerate / Bake To Current Map.\n\
+             Right panel includes Town controls, overlays, export/import JSON,\n\
+             quest autogen, POI spawn, and MMO simulation buttons (tick/combat/loot)."
+                .to_string(),
+        );
+        layout.add_pair("".to_string(), Box::new(town_help));
+
         canvas.set_layout(layout);
         ui.show_dialog("Help", canvas, vec![TheDialogButtonRole::Accept], ctx);
     }
@@ -254,6 +310,1497 @@ impl Editor {
         ui.show_dialog("About Encheament Engine", canvas, vec![TheDialogButtonRole::Accept], ctx);
     }
 
+    fn apply_ide_layout_unreal(&mut self, ui: &mut TheUI, ctx: &mut TheContext) {
+        self.show_left_toolbar = true;
+        self.show_right_toolbar = true;
+        self.option_snap_to_grid = true;
+        self.option_show_grid = true;
+        self.option_show_gizmos = true;
+        self.theme_preset = "Slate".to_string();
+        self.left_group_modes_expanded = true;
+        self.left_group_2d_expanded = true;
+        self.left_group_3d_expanded = true;
+        self.left_group_editor_expanded = true;
+
+        self.apply_toolbar_visibility(ui, ctx);
+        self.apply_theme_preset(ui, ctx);
+        self.rebuild_left_tool_name_layout(ui, ctx);
+        self.apply_workspace_settings_to_ui(ui, ctx);
+        self.persist_workspace_settings_to_project_config();
+    }
+
+    fn apply_ide_layout_minimal(&mut self, ui: &mut TheUI, ctx: &mut TheContext) {
+        self.show_left_toolbar = true;
+        self.show_right_toolbar = false;
+        self.option_snap_to_grid = false;
+        self.option_show_grid = false;
+        self.option_show_gizmos = false;
+        self.theme_preset = "Dark".to_string();
+        self.left_group_modes_expanded = true;
+        self.left_group_2d_expanded = false;
+        self.left_group_3d_expanded = false;
+        self.left_group_editor_expanded = true;
+
+        self.apply_toolbar_visibility(ui, ctx);
+        self.apply_theme_preset(ui, ctx);
+        self.rebuild_left_tool_name_layout(ui, ctx);
+        self.apply_workspace_settings_to_ui(ui, ctx);
+        self.persist_workspace_settings_to_project_config();
+    }
+
+    fn show_ide_feature_matrix_dialog(&self, ui: &mut TheUI, ctx: &mut TheContext) {
+        let width = 880;
+        let height = 520;
+
+        let mut canvas = TheCanvas::new();
+        canvas.limiter_mut().set_max_size(Vec2::new(width, height));
+
+        let mut layout = TheTextLayout::new(TheId::named("IDE Feature Matrix Layout"));
+        layout.set_margin(Vec4::new(14, 14, 14, 14));
+        layout.set_padding(8);
+        layout.limiter_mut().set_max_width(width - 30);
+
+        let profile = crate::ide_profile::IdeProfile::unreal_like();
+
+        let mut title = TheText::new(TheId::named("IDE Feature Matrix Title"));
+        title.set_text(format!("IDE Profile: {}", profile.name));
+        layout.add_pair("".to_string(), Box::new(title));
+
+        for category in profile.categories {
+            let mut cat = TheText::new(TheId::named(&format!("IDE Category {}", category.name)));
+            cat.set_text(format!("{}:", category.name));
+            layout.add_pair("".to_string(), Box::new(cat));
+
+            for feature in category.features {
+                let mut line =
+                    TheText::new(TheId::named(&format!("IDE Feature {}", feature.name)));
+                line.set_text(format!(" - {}: {}", feature.name, feature.description));
+                layout.add_pair("".to_string(), Box::new(line));
+            }
+        }
+
+        canvas.set_layout(layout);
+        ui.show_dialog(
+            "IDE Feature Matrix",
+            canvas,
+            vec![TheDialogButtonRole::Accept],
+            ctx,
+        );
+    }
+
+    fn tool_group_label(&self, tool_name: &str, fallback: &str) -> String {
+        match tool_name {
+            "Select Tool" => "Modes / Select".to_string(),
+            "Vertex Tool" => "2D / Vertex".to_string(),
+            "Linedef Tool" => "2D / Linedef".to_string(),
+            "Sector Tool" => "2D / Sector".to_string(),
+            "Rect Tool" => "2D / Rect".to_string(),
+            "Entity Tool" => "3D / Entity".to_string(),
+            "Render Tool" => "3D / Render".to_string(),
+            "World Tool" => "3D / Terrain".to_string(),
+            "Code Tool" => "Editor / Code".to_string(),
+            "Data Tool" => "Editor / Data".to_string(),
+            "Tileset Tool" => "Editor / Tileset".to_string(),
+            "Config Tool" => "Editor / Config".to_string(),
+            "Info Tool" => "Editor / Info".to_string(),
+            "Game Tool" => "Play / Runtime".to_string(),
+            _ => fallback.to_string(),
+        }
+    }
+
+    fn left_tool_group_key(&self, tool_name: &str) -> &'static str {
+        match tool_name {
+            "Select Tool" | "Rect Tool" => "Modes",
+            "Vertex Tool" | "Linedef Tool" | "Sector Tool" => "2D",
+            "Entity Tool" | "Render Tool" | "World Tool" | "Game Tool" => "3D",
+            _ => "Editor",
+        }
+    }
+
+    fn build_left_ue5_tool_panel(&self, ctx: &mut TheContext) -> TheCanvas {
+        let mut tool_list_canvas: TheCanvas = TheCanvas::new();
+
+        let mut tool_list_bar_canvas = TheCanvas::new();
+        tool_list_bar_canvas.set_widget(TheToolListBar::new(TheId::named("Left Modes Bar")));
+        tool_list_canvas.set_top(tool_list_bar_canvas);
+
+        let mut v_tool_list_layout = TheVLayout::new(TheId::named("Tool List Layout"));
+        v_tool_list_layout
+            .limiter_mut()
+            .set_max_width(LEFT_ICON_BAR_WIDTH);
+        v_tool_list_layout.set_margin(Vec4::new(2, 2, 2, 2));
+        v_tool_list_layout.set_padding(1);
+
+        TOOLLIST
+            .write()
+            .unwrap()
+            .set_active_editor(&mut v_tool_list_layout, ctx);
+        tool_list_canvas.set_layout(v_tool_list_layout);
+
+        let mut left_tool_name_layout = TheTextLayout::new(TheId::named("Left Tool Name Layout"));
+        left_tool_name_layout
+            .limiter_mut()
+            .set_max_width(if self.show_left_toolbar {
+                LEFT_TOOL_NAMES_WIDTH
+            } else {
+                0
+            });
+        left_tool_name_layout.set_margin(Vec4::new(4, 4, 4, 4));
+        left_tool_name_layout.set_padding(3);
+        left_tool_name_layout.set_fixed_text_width(LEFT_TOOL_TEXT_WIDTH);
+
+        self.populate_left_tool_name_layout(&mut left_tool_name_layout);
+
+        let mut left_tool_name_canvas = TheCanvas::new();
+        left_tool_name_canvas.set_layout(left_tool_name_layout);
+
+        let mut left_tool_name_border_canvas = TheCanvas::new();
+        let mut left_tool_name_border_widget = TheIconView::new(TheId::empty());
+        left_tool_name_border_widget.set_border_color(Some([82, 82, 82, 255]));
+        left_tool_name_border_widget.limiter_mut().set_max_width(1);
+        left_tool_name_border_widget
+            .limiter_mut()
+            .set_max_height(i32::MAX);
+        left_tool_name_border_canvas.set_widget(left_tool_name_border_widget);
+        left_tool_name_canvas.set_right(left_tool_name_border_canvas);
+
+        tool_list_canvas.set_right(left_tool_name_canvas);
+        tool_list_canvas
+    }
+
+    fn build_right_ue5_panel(&self) -> TheCanvas {
+        let mut right_tool_canvas = TheCanvas::new();
+
+        let mut right_tool_bar_canvas = TheCanvas::new();
+        right_tool_bar_canvas.set_widget(TheToolListBar::new(TheId::named("Right Tool Bar")));
+        right_tool_canvas.set_top(right_tool_bar_canvas);
+
+        let mut right_tool_layout = TheVLayout::new(TheId::named("Right Tool Layout"));
+        right_tool_layout
+            .limiter_mut()
+            .set_max_width(RIGHT_ICON_BAR_WIDTH);
+        right_tool_layout.set_margin(Vec4::new(2, 2, 2, 2));
+        right_tool_layout.set_padding(1);
+
+        let mut add_quick_button = |id: &str, icon: &str, status: &str| {
+            let mut button = TheMenubarButton::new(TheId::named(id));
+            button.set_icon_name(icon.to_string());
+            button.set_status_text(status);
+            right_tool_layout.add_widget(Box::new(button));
+        };
+
+        add_quick_button("QuickGuiOpen", "icon_role_load", "Open project");
+        add_quick_button("QuickGuiSave", "icon_role_save", "Save project");
+        add_quick_button("QuickGuiUndo", "icon_role_undo", "Undo");
+        add_quick_button("QuickGuiRedo", "icon_role_redo", "Redo");
+        add_quick_button("QuickGuiPlay", "play", "Run game");
+        add_quick_button("QuickGuiPause", "play-pause", "Pause game");
+        add_quick_button("QuickGuiStop", "stop-fill", "Stop game");
+        add_quick_button("QuickGuiHelp", "question-mark", "Open help");
+        add_quick_button("QuickThemeDark", "dark_tabbar_selected", "Dark theme preset");
+        add_quick_button("QuickThemeLight", "dark_tabbar_hover", "Light theme preset");
+        add_quick_button("QuickThemeSlate", "dark_tabbar_normal", "Slate theme preset");
+        add_quick_button("QuickOptSnap", "selection", "Toggle snap-to-grid");
+        add_quick_button("QuickOptGrid", "square", "Toggle grid visibility");
+        add_quick_button("QuickOptGizmos", "transform", "Toggle gizmos");
+
+        if let Ok(toollist) = TOOLLIST.read() {
+            for tool in &toollist.game_tools {
+                let quick_id = format!("RightTool::{}", tool.id().name);
+                let mut button = TheMenubarButton::new(TheId::named(&quick_id));
+                button.set_icon_name(tool.icon_name());
+                button.set_has_state(true);
+                button.set_status_text(&format!("Activate {}", tool.info()));
+                right_tool_layout.add_widget(Box::new(button));
+            }
+        }
+        right_tool_canvas.set_layout(right_tool_layout);
+
+        let mut right_settings_canvas = TheCanvas::new();
+        right_settings_canvas
+            .set_widget(TheTraybar::new(TheId::named("Right Settings Bar")));
+
+        let mut right_settings_layout = TheTextLayout::new(TheId::named("Right Settings Layout"));
+        right_settings_layout.set_margin(Vec4::new(4, 4, 4, 4));
+        right_settings_layout.set_padding(4);
+        right_settings_layout
+            .limiter_mut()
+            .set_max_width(RIGHT_SETTINGS_WIDTH);
+
+        let mut theme_dropdown = TheDropdownMenu::new(TheId::named("ThemePresetDropdown"));
+        theme_dropdown.add_option("Dark".to_string());
+        theme_dropdown.add_option("Light".to_string());
+        theme_dropdown.add_option("Slate".to_string());
+        let theme_index = match self.theme_preset.as_str() {
+            "Light" => 1,
+            "Slate" => 2,
+            _ => 0,
+        };
+        theme_dropdown.set_selected_index(theme_index);
+        right_settings_layout.add_pair("Details / Theme".to_string(), Box::new(theme_dropdown));
+
+        let mut snap_cb = TheCheckButton::new(TheId::named("OptionSnapCB"));
+        snap_cb.set_value(TheValue::Bool(self.option_snap_to_grid));
+        right_settings_layout.add_pair("Details / Snap".to_string(), Box::new(snap_cb));
+
+        let mut grid_cb = TheCheckButton::new(TheId::named("OptionGridCB"));
+        grid_cb.set_value(TheValue::Bool(self.option_show_grid));
+        right_settings_layout.add_pair("Viewport / Grid".to_string(), Box::new(grid_cb));
+
+        let mut gizmo_cb = TheCheckButton::new(TheId::named("OptionGizmoCB"));
+        gizmo_cb.set_value(TheValue::Bool(self.option_show_gizmos));
+        right_settings_layout.add_pair("Viewport / Gizmos".to_string(), Box::new(gizmo_cb));
+
+        let mut left_cb = TheCheckButton::new(TheId::named("OptionLeftToolbarCB"));
+        left_cb.set_value(TheValue::Bool(self.show_left_toolbar));
+        right_settings_layout.add_pair("Layout / Left Panel".to_string(), Box::new(left_cb));
+
+        let mut right_cb = TheCheckButton::new(TheId::named("OptionRightToolbarCB"));
+        right_cb.set_value(TheValue::Bool(self.show_right_toolbar));
+        right_settings_layout.add_pair("Layout / Right Panel".to_string(), Box::new(right_cb));
+
+        let mut fps_edit = TheTextLineEdit::new(TheId::named("OptionTargetFpsEdit"));
+        fps_edit.set_value(TheValue::Int(CONFIGEDITOR.read().unwrap().target_fps));
+        fps_edit.set_range(TheValue::RangeI32(1..=120));
+        fps_edit.set_continuous(true);
+        right_settings_layout.add_pair("Runtime / FPS".to_string(), Box::new(fps_edit));
+
+        let mut tick_edit = TheTextLineEdit::new(TheId::named("OptionTickMsEdit"));
+        tick_edit.set_value(TheValue::Int(CONFIGEDITOR.read().unwrap().game_tick_ms));
+        tick_edit.set_range(TheValue::RangeI32(10..=2000));
+        tick_edit.set_continuous(true);
+        right_settings_layout.add_pair("Runtime / Tick ms".to_string(), Box::new(tick_edit));
+
+        let mut grid_size_edit = TheTextLineEdit::new(TheId::named("OptionGridSizeEdit"));
+        grid_size_edit.set_value(TheValue::Int(CONFIGEDITOR.read().unwrap().grid_size));
+        grid_size_edit.set_range(TheValue::RangeI32(4..=256));
+        grid_size_edit.set_continuous(true);
+        right_settings_layout.add_pair("Viewport / Grid Size".to_string(), Box::new(grid_size_edit));
+
+        let mut town_preset_dropdown = TheDropdownMenu::new(TheId::named("TownPresetDropdown"));
+        town_preset_dropdown.add_option("Small Town".to_string());
+        town_preset_dropdown.add_option("Large Town".to_string());
+        town_preset_dropdown.add_option("Small City".to_string());
+        town_preset_dropdown.add_option("Large City".to_string());
+        let town_preset_index = match self.towngen_preset.as_str() {
+            "Small Town" => 0,
+            "Large Town" => 1,
+            "Large City" => 3,
+            _ => 2,
+        };
+        town_preset_dropdown.set_selected_index(town_preset_index);
+        right_settings_layout.add_pair("Town / Preset".to_string(), Box::new(town_preset_dropdown));
+
+        let mut town_seed_edit = TheTextLineEdit::new(TheId::named("TownSeedEdit"));
+        town_seed_edit.set_value(TheValue::Int(self.towngen_last_seed as i32));
+        town_seed_edit.set_range(TheValue::RangeI32(1..=i32::MAX));
+        town_seed_edit.set_continuous(true);
+        right_settings_layout.add_pair("Town / Seed".to_string(), Box::new(town_seed_edit));
+
+        let mut town_river_cb = TheCheckButton::new(TheId::named("TownRiverCB"));
+        town_river_cb.set_value(TheValue::Bool(self.towngen_has_river));
+        right_settings_layout.add_pair("Town / River".to_string(), Box::new(town_river_cb));
+
+        let mut town_walls_cb = TheCheckButton::new(TheId::named("TownWallsCB"));
+        town_walls_cb.set_value(TheValue::Bool(self.towngen_has_walls));
+        right_settings_layout.add_pair("Town / Walls".to_string(), Box::new(town_walls_cb));
+
+        let mut town_auto_bake_cb = TheCheckButton::new(TheId::named("TownAutoBakeCB"));
+        town_auto_bake_cb.set_value(TheValue::Bool(self.towngen_auto_bake));
+        right_settings_layout.add_pair("Town / Auto Bake".to_string(), Box::new(town_auto_bake_cb));
+
+        let mut show_districts_cb = TheCheckButton::new(TheId::named("OverlayTownDistrictsCB"));
+        show_districts_cb.set_value(TheValue::Bool(self.overlay_show_town_districts));
+        right_settings_layout.add_pair("Overlay / Districts".to_string(), Box::new(show_districts_cb));
+
+        let mut show_roads_cb = TheCheckButton::new(TheId::named("OverlayTownRoadsCB"));
+        show_roads_cb.set_value(TheValue::Bool(self.overlay_show_town_roads));
+        right_settings_layout.add_pair("Overlay / Roads".to_string(), Box::new(show_roads_cb));
+
+        let mut show_landmarks_cb = TheCheckButton::new(TheId::named("OverlayTownLandmarksCB"));
+        show_landmarks_cb.set_value(TheValue::Bool(self.overlay_show_town_landmarks));
+        right_settings_layout.add_pair("Overlay / Landmarks".to_string(), Box::new(show_landmarks_cb));
+
+        let mut town_generate_btn = TheTraybarButton::new(TheId::named("TownGenerateBtn"));
+        town_generate_btn.set_text("Generate".to_string());
+        right_settings_layout.add_pair("Town / Action".to_string(), Box::new(town_generate_btn));
+
+        let mut town_regen_btn = TheTraybarButton::new(TheId::named("TownRegenerateBtn"));
+        town_regen_btn.set_text("Regenerate".to_string());
+        right_settings_layout.add_pair("Town / Action".to_string(), Box::new(town_regen_btn));
+
+        let mut town_bake_btn = TheTraybarButton::new(TheId::named("TownBakeBtn"));
+        town_bake_btn.set_text("Bake To Map".to_string());
+        right_settings_layout.add_pair("Town / Action".to_string(), Box::new(town_bake_btn));
+
+        let mut export_btn = TheTraybarButton::new(TheId::named("TownExportBtn"));
+        export_btn.set_text("Export Town JSON".to_string());
+        right_settings_layout.add_pair("Town / Data".to_string(), Box::new(export_btn));
+
+        let mut import_btn = TheTraybarButton::new(TheId::named("TownImportBtn"));
+        import_btn.set_text("Import Town JSON".to_string());
+        right_settings_layout.add_pair("Town / Data".to_string(), Box::new(import_btn));
+
+        let mut quest_btn = TheTraybarButton::new(TheId::named("TownAutoQuestBtn"));
+        quest_btn.set_text("Generate Quests".to_string());
+        right_settings_layout.add_pair("Town / MMO".to_string(), Box::new(quest_btn));
+
+        let mut spawner_btn = TheTraybarButton::new(TheId::named("TownSpawnPoiBtn"));
+        spawner_btn.set_text("Spawn POIs".to_string());
+        right_settings_layout.add_pair("Town / MMO".to_string(), Box::new(spawner_btn));
+
+        let mut xp_rate_edit = TheTextLineEdit::new(TheId::named("MmorpgXpRateEdit"));
+        xp_rate_edit.set_value(TheValue::Float(self.mmorpg_xp_rate));
+        xp_rate_edit.set_range(TheValue::RangeF32(0.1..=5.0));
+        xp_rate_edit.set_continuous(true);
+        right_settings_layout.add_pair("MMO / XP Rate".to_string(), Box::new(xp_rate_edit));
+
+        let mut loot_rate_edit = TheTextLineEdit::new(TheId::named("MmorpgLootRateEdit"));
+        loot_rate_edit.set_value(TheValue::Float(self.mmorpg_loot_rate));
+        loot_rate_edit.set_range(TheValue::RangeF32(0.1..=5.0));
+        loot_rate_edit.set_continuous(true);
+        right_settings_layout.add_pair("MMO / Loot Rate".to_string(), Box::new(loot_rate_edit));
+
+        let mut event_rate_edit = TheTextLineEdit::new(TheId::named("MmorpgEventRateEdit"));
+        event_rate_edit.set_value(TheValue::Float(self.mmorpg_event_rate));
+        event_rate_edit.set_range(TheValue::RangeF32(0.1..=5.0));
+        event_rate_edit.set_continuous(true);
+        right_settings_layout.add_pair("MMO / Event Rate".to_string(), Box::new(event_rate_edit));
+
+        let mut sim_tick_btn = TheTraybarButton::new(TheId::named("MmorpgSimTickBtn"));
+        sim_tick_btn.set_text("Sim Tick".to_string());
+        right_settings_layout.add_pair("MMO / Sim".to_string(), Box::new(sim_tick_btn));
+
+        let mut sim_combat_btn = TheTraybarButton::new(TheId::named("MmorpgSimCombatBtn"));
+        sim_combat_btn.set_text("Sim Combat".to_string());
+        right_settings_layout.add_pair("MMO / Sim".to_string(), Box::new(sim_combat_btn));
+
+        let mut sim_loot_btn = TheTraybarButton::new(TheId::named("MmorpgSimLootBtn"));
+        sim_loot_btn.set_text("Sim Loot".to_string());
+        right_settings_layout.add_pair("MMO / Sim".to_string(), Box::new(sim_loot_btn));
+
+        right_settings_canvas.set_layout(right_settings_layout);
+        right_tool_canvas.set_bottom(right_settings_canvas);
+
+        let mut right_tool_border_canvas = TheCanvas::new();
+        let mut right_border_widget = TheIconView::new(TheId::empty());
+        right_border_widget.set_border_color(Some([82, 82, 82, 255]));
+        right_border_widget.limiter_mut().set_max_width(1);
+        right_border_widget.limiter_mut().set_max_height(i32::MAX);
+        right_tool_border_canvas.set_widget(right_border_widget);
+        right_tool_canvas.set_left(right_tool_border_canvas);
+
+        right_tool_canvas
+    }
+
+    fn build_ue5_workspace_canvas(&mut self, ui: &mut TheUI, ctx: &mut TheContext) -> TheCanvas {
+        self.sidebar.init_ui(ui, ctx, &mut self.server_ctx);
+
+        let bottom_panels = DOCKMANAGER.write().unwrap().init(ctx);
+
+        let mut editor_canvas: TheCanvas = TheCanvas::new();
+        let mut editor_stack = TheStackLayout::new(TheId::named("Editor Stack"));
+        let poly_canvas = self.mapeditor.init_ui(ui, ctx, &mut self.project);
+        editor_stack.add_canvas(poly_canvas);
+        DOCKMANAGER
+            .write()
+            .unwrap()
+            .add_editors_to_stack(&mut editor_stack, ctx);
+        editor_canvas.set_layout(editor_stack);
+
+        let mut viewport_utilities_layout =
+            TheSharedVLayout::new(TheId::named("UE5 Viewport Utilities Layout"));
+        viewport_utilities_layout.add_canvas(editor_canvas);
+        viewport_utilities_layout.add_canvas(bottom_panels);
+        viewport_utilities_layout.set_shared_ratio(crate::DEFAULT_VLAYOUT_RATIO);
+        viewport_utilities_layout.set_mode(TheSharedVLayoutMode::Shared);
+
+        let mut workspace_canvas = TheCanvas::new();
+        workspace_canvas.set_layout(viewport_utilities_layout);
+        workspace_canvas.set_left(self.build_left_ue5_tool_panel(ctx));
+        workspace_canvas.set_right(self.build_right_ue5_panel());
+        workspace_canvas
+    }
+
+    fn build_status_canvas(&self) -> TheCanvas {
+        let mut status_canvas = TheCanvas::new();
+        let mut statusbar = TheStatusbar::new(TheId::named("Statusbar"));
+        statusbar.set_text(fl!("info_welcome"));
+        status_canvas.set_widget(statusbar);
+        status_canvas
+    }
+
+    fn set_left_toolbar_active_tool(&mut self, ctx: &mut TheContext, tool_name: &str) {
+        if self.left_toolbar_active_tool.as_deref() == Some(tool_name) {
+            return;
+        }
+
+        let group_changed = match self.left_tool_group_key(tool_name) {
+            "Modes" => {
+                let changed = !self.left_group_modes_expanded;
+                self.left_group_modes_expanded = true;
+                changed
+            }
+            "2D" => {
+                let changed = !self.left_group_2d_expanded;
+                self.left_group_2d_expanded = true;
+                changed
+            }
+            "3D" => {
+                let changed = !self.left_group_3d_expanded;
+                self.left_group_3d_expanded = true;
+                changed
+            }
+            _ => {
+                let changed = !self.left_group_editor_expanded;
+                self.left_group_editor_expanded = true;
+                changed
+            }
+        };
+
+        if group_changed {
+            ctx.ui.send(TheEvent::Custom(
+                TheId::named("Rebuild Left Toolbar"),
+                TheValue::Empty,
+            ));
+            self.persist_workspace_settings_to_project_config();
+        }
+
+        if let Ok(toollist) = TOOLLIST.read() {
+            for tool in &toollist.game_tools {
+                let left_tool_id = format!("LeftTool::{}", tool.id().name);
+                let top_tool_id = format!("TopTool::{}", tool.id().name);
+                let right_tool_id = format!("RightTool::{}", tool.id().name);
+                ctx.ui.set_widget_state(left_tool_id, TheWidgetState::None);
+                ctx.ui.set_widget_state(top_tool_id, TheWidgetState::None);
+                ctx.ui.set_widget_state(right_tool_id, TheWidgetState::None);
+            }
+        }
+
+        ctx.ui
+            .set_widget_state("LeftMode::Select Tool".to_string(), TheWidgetState::None);
+        ctx.ui
+            .set_widget_state("LeftMode::World Tool".to_string(), TheWidgetState::None);
+        ctx.ui
+            .set_widget_state("LeftMode::Entity Tool".to_string(), TheWidgetState::None);
+        ctx.ui
+            .set_widget_state("LeftMode::Rect Tool".to_string(), TheWidgetState::None);
+
+        ctx.ui.set_widget_state(
+            format!("LeftTool::{}", tool_name),
+            TheWidgetState::Selected,
+        );
+        ctx.ui
+            .set_widget_state(format!("TopTool::{}", tool_name), TheWidgetState::Selected);
+        ctx.ui.set_widget_state(
+            format!("RightTool::{}", tool_name),
+            TheWidgetState::Selected,
+        );
+
+        match tool_name {
+            "Select Tool" => ctx.ui.set_widget_state(
+                "LeftMode::Select Tool".to_string(),
+                TheWidgetState::Selected,
+            ),
+            "World Tool" => ctx.ui.set_widget_state(
+                "LeftMode::World Tool".to_string(),
+                TheWidgetState::Selected,
+            ),
+            "Entity Tool" => ctx.ui.set_widget_state(
+                "LeftMode::Entity Tool".to_string(),
+                TheWidgetState::Selected,
+            ),
+            "Rect Tool" => {
+                ctx.ui
+                    .set_widget_state("LeftMode::Rect Tool".to_string(), TheWidgetState::Selected)
+            }
+            _ => {}
+        }
+
+        self.left_toolbar_active_tool = Some(tool_name.to_string());
+    }
+
+    fn add_left_group_header(
+        &self,
+        layout: &mut dyn TheTextLayoutTrait,
+        group: &str,
+        expanded: bool,
+    ) {
+        let toggle_id = format!("LeftGroupToggle::{}", group);
+        let mut toggle = TheTraybarButton::new(TheId::named(&toggle_id));
+        toggle.set_text(if expanded {
+            "Collapse".to_string()
+        } else {
+            "Expand".to_string()
+        });
+        toggle.set_status_text(&format!("Toggle {} tools section", group));
+        layout.add_pair(group.to_string(), Box::new(toggle));
+    }
+
+    fn populate_left_tool_name_layout(&self, layout: &mut dyn TheTextLayoutTrait) {
+        let mut expand_all = TheTraybarButton::new(TheId::named("LeftGroupAction::ExpandAll"));
+        expand_all.set_text("Expand All".to_string());
+        expand_all.set_status_text("Expand all left toolbar sections");
+        layout.add_pair("Sections".to_string(), Box::new(expand_all));
+
+        let mut collapse_all = TheTraybarButton::new(TheId::named("LeftGroupAction::CollapseAll"));
+        collapse_all.set_text("Collapse All".to_string());
+        collapse_all.set_status_text("Collapse all left toolbar sections");
+        layout.add_pair("Sections".to_string(), Box::new(collapse_all));
+
+        self.add_left_group_header(layout, "Modes", self.left_group_modes_expanded);
+        self.add_left_group_header(layout, "2D", self.left_group_2d_expanded);
+        self.add_left_group_header(layout, "3D", self.left_group_3d_expanded);
+        self.add_left_group_header(layout, "Editor", self.left_group_editor_expanded);
+
+        if let Ok(toollist) = TOOLLIST.read() {
+            for tool in &toollist.game_tools {
+                let tool_name = tool.id().name.clone();
+                let group = self.left_tool_group_key(&tool_name);
+                let group_visible = match group {
+                    "Modes" => self.left_group_modes_expanded,
+                    "2D" => self.left_group_2d_expanded,
+                    "3D" => self.left_group_3d_expanded,
+                    _ => self.left_group_editor_expanded,
+                };
+
+                if !group_visible {
+                    continue;
+                }
+
+                let tool_label = format!("  {}", self.tool_group_label(&tool_name, &tool.info()));
+                let left_tool_id = format!("LeftTool::{}", tool_name);
+                let mut tool_button = TheMenubarButton::new(TheId::named(&left_tool_id));
+                tool_button.set_icon_name(tool.icon_name());
+                tool_button.set_has_state(true);
+                tool_button.set_status_text(&format!(
+                    "Activate {} from left workspace (linked to Tools menu)",
+                    tool.info()
+                ));
+                layout.add_pair(tool_label, Box::new(tool_button));
+            }
+        }
+
+        let mut add_left_action = |label: &str, id: &str, icon: &str, status: &str| {
+            let mut button = TheMenubarButton::new(TheId::named(id));
+            button.set_icon_name(icon.to_string());
+            button.set_status_text(status);
+            layout.add_pair(format!("  {}", label), Box::new(button));
+        };
+
+        add_left_action(
+            "Town / Generate",
+            "LeftAction::MenuTools::GenerateTown",
+            "wand-magic-sparkles",
+            "Generate town systems from left toolbar",
+        );
+        add_left_action(
+            "Town / Bake To Map",
+            "LeftAction::MenuTown::BakeMap",
+            "map",
+            "Bake generated town into the current map",
+        );
+        add_left_action(
+            "MMO / Generate",
+            "LeftAction::MenuTools::GenerateRpgMmorpg",
+            "gear",
+            "Generate RPG/MMORPG systems",
+        );
+        add_left_action(
+            "MMO / Sim Tick",
+            "LeftAction::MenuMmoSim::Tick",
+            "clock",
+            "Run one MMO simulation tick",
+        );
+        add_left_action(
+            "Help / Docs",
+            "LeftAction::MenuHelp::Docs",
+            "question-mark",
+            "Open help documentation",
+        );
+        add_left_action(
+            "IDE / Feature Matrix",
+            "LeftAction::MenuIde::FeatureMatrix",
+            "list",
+            "Open IDE feature matrix",
+        );
+        add_left_action(
+            "Help / About",
+            "LeftAction::MenuHelp::About",
+            "info",
+            "Open app about dialog",
+        );
+    }
+
+    fn rebuild_left_tool_name_layout(&mut self, ui: &mut TheUI, ctx: &mut TheContext) {
+        if let Some(layout) = ui.get_text_layout("Left Tool Name Layout") {
+            layout.clear();
+            self.populate_left_tool_name_layout(layout);
+            layout.relayout(ctx);
+        }
+        self.left_toolbar_active_tool = None;
+        self.sync_left_toolbar_active_from_toollist(ctx);
+    }
+
+    fn sync_left_toolbar_active_from_toollist(&mut self, ctx: &mut TheContext) {
+        if let Ok(toollist) = TOOLLIST.read()
+            && !toollist.editor_mode
+            && let Some(tool) = toollist.game_tools.get(toollist.curr_game_tool)
+        {
+            self.set_left_toolbar_active_tool(ctx, &tool.id().name);
+        }
+    }
+
+    fn persist_workspace_settings_to_project_config(&mut self) {
+        let mut root_value = toml::from_str::<toml::Value>(&self.project.config)
+            .unwrap_or_else(|_| toml::Value::Table(toml::Table::new()));
+        let root = if let Some(root) = root_value.as_table_mut() {
+            root
+        } else {
+            root_value = toml::Value::Table(toml::Table::new());
+            root_value.as_table_mut().unwrap()
+        };
+
+        let layout_entry = root
+            .entry("editor_layout".to_string())
+            .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+        if let Some(layout) = layout_entry.as_table_mut() {
+            layout.insert(
+                "show_left_toolbar".to_string(),
+                toml::Value::Boolean(self.show_left_toolbar),
+            );
+            layout.insert(
+                "show_right_toolbar".to_string(),
+                toml::Value::Boolean(self.show_right_toolbar),
+            );
+            layout.insert(
+                "option_snap_to_grid".to_string(),
+                toml::Value::Boolean(self.option_snap_to_grid),
+            );
+            layout.insert(
+                "option_show_grid".to_string(),
+                toml::Value::Boolean(self.option_show_grid),
+            );
+            layout.insert(
+                "option_show_gizmos".to_string(),
+                toml::Value::Boolean(self.option_show_gizmos),
+            );
+            layout.insert(
+                "theme_preset".to_string(),
+                toml::Value::String(self.theme_preset.clone()),
+            );
+            layout.insert(
+                "left_group_modes_expanded".to_string(),
+                toml::Value::Boolean(self.left_group_modes_expanded),
+            );
+            layout.insert(
+                "left_group_2d_expanded".to_string(),
+                toml::Value::Boolean(self.left_group_2d_expanded),
+            );
+            layout.insert(
+                "left_group_3d_expanded".to_string(),
+                toml::Value::Boolean(self.left_group_3d_expanded),
+            );
+            layout.insert(
+                "left_group_editor_expanded".to_string(),
+                toml::Value::Boolean(self.left_group_editor_expanded),
+            );
+            layout.insert(
+                "towngen_preset".to_string(),
+                toml::Value::String(self.towngen_preset.clone()),
+            );
+            layout.insert(
+                "towngen_has_river".to_string(),
+                toml::Value::Boolean(self.towngen_has_river),
+            );
+            layout.insert(
+                "towngen_has_walls".to_string(),
+                toml::Value::Boolean(self.towngen_has_walls),
+            );
+            layout.insert(
+                "towngen_last_seed".to_string(),
+                toml::Value::Integer(self.towngen_last_seed as i64),
+            );
+            layout.insert(
+                "towngen_auto_bake".to_string(),
+                toml::Value::Boolean(self.towngen_auto_bake),
+            );
+            layout.insert(
+                "overlay_show_town_districts".to_string(),
+                toml::Value::Boolean(self.overlay_show_town_districts),
+            );
+            layout.insert(
+                "overlay_show_town_roads".to_string(),
+                toml::Value::Boolean(self.overlay_show_town_roads),
+            );
+            layout.insert(
+                "overlay_show_town_landmarks".to_string(),
+                toml::Value::Boolean(self.overlay_show_town_landmarks),
+            );
+            layout.insert(
+                "mmorpg_xp_rate".to_string(),
+                toml::Value::Float(self.mmorpg_xp_rate as f64),
+            );
+            layout.insert(
+                "mmorpg_loot_rate".to_string(),
+                toml::Value::Float(self.mmorpg_loot_rate as f64),
+            );
+            layout.insert(
+                "mmorpg_event_rate".to_string(),
+                toml::Value::Float(self.mmorpg_event_rate as f64),
+            );
+        }
+
+        if let Ok(config_text) = toml::to_string_pretty(&root_value) {
+            self.project.config = config_text;
+        }
+    }
+
+    fn load_workspace_settings_from_project_config(&mut self) {
+        if let Ok(root_value) = toml::from_str::<toml::Value>(&self.project.config)
+            && let Some(layout) = root_value.get("editor_layout").and_then(toml::Value::as_table)
+        {
+            if let Some(v) = layout.get("show_left_toolbar").and_then(toml::Value::as_bool) {
+                self.show_left_toolbar = v;
+            }
+            if let Some(v) = layout.get("show_right_toolbar").and_then(toml::Value::as_bool) {
+                self.show_right_toolbar = v;
+            }
+            if let Some(v) = layout.get("option_snap_to_grid").and_then(toml::Value::as_bool) {
+                self.option_snap_to_grid = v;
+            }
+            if let Some(v) = layout.get("option_show_grid").and_then(toml::Value::as_bool) {
+                self.option_show_grid = v;
+            }
+            if let Some(v) = layout.get("option_show_gizmos").and_then(toml::Value::as_bool) {
+                self.option_show_gizmos = v;
+            }
+            if let Some(v) = layout.get("theme_preset").and_then(toml::Value::as_str) {
+                self.theme_preset = v.to_string();
+            }
+            if let Some(v) = layout
+                .get("left_group_modes_expanded")
+                .and_then(toml::Value::as_bool)
+            {
+                self.left_group_modes_expanded = v;
+            }
+            if let Some(v) = layout
+                .get("left_group_2d_expanded")
+                .and_then(toml::Value::as_bool)
+            {
+                self.left_group_2d_expanded = v;
+            }
+            if let Some(v) = layout
+                .get("left_group_3d_expanded")
+                .and_then(toml::Value::as_bool)
+            {
+                self.left_group_3d_expanded = v;
+            }
+            if let Some(v) = layout
+                .get("left_group_editor_expanded")
+                .and_then(toml::Value::as_bool)
+            {
+                self.left_group_editor_expanded = v;
+            }
+            if let Some(v) = layout.get("towngen_preset").and_then(toml::Value::as_str) {
+                self.towngen_preset = v.to_string();
+            }
+            if let Some(v) = layout.get("towngen_has_river").and_then(toml::Value::as_bool) {
+                self.towngen_has_river = v;
+            }
+            if let Some(v) = layout.get("towngen_has_walls").and_then(toml::Value::as_bool) {
+                self.towngen_has_walls = v;
+            }
+            if let Some(v) = layout.get("towngen_last_seed").and_then(toml::Value::as_integer) {
+                self.towngen_last_seed = v.max(1) as u64;
+            }
+            if let Some(v) = layout.get("towngen_auto_bake").and_then(toml::Value::as_bool) {
+                self.towngen_auto_bake = v;
+            }
+            if let Some(v) = layout
+                .get("overlay_show_town_districts")
+                .and_then(toml::Value::as_bool)
+            {
+                self.overlay_show_town_districts = v;
+            }
+            if let Some(v) = layout
+                .get("overlay_show_town_roads")
+                .and_then(toml::Value::as_bool)
+            {
+                self.overlay_show_town_roads = v;
+            }
+            if let Some(v) = layout
+                .get("overlay_show_town_landmarks")
+                .and_then(toml::Value::as_bool)
+            {
+                self.overlay_show_town_landmarks = v;
+            }
+            if let Some(v) = layout.get("mmorpg_xp_rate").and_then(toml::Value::as_float) {
+                self.mmorpg_xp_rate = (v as f32).clamp(0.1, 5.0);
+            }
+            if let Some(v) = layout.get("mmorpg_loot_rate").and_then(toml::Value::as_float) {
+                self.mmorpg_loot_rate = (v as f32).clamp(0.1, 5.0);
+            }
+            if let Some(v) = layout.get("mmorpg_event_rate").and_then(toml::Value::as_float) {
+                self.mmorpg_event_rate = (v as f32).clamp(0.1, 5.0);
+            }
+        }
+    }
+
+    fn apply_workspace_settings_to_ui(&mut self, ui: &mut TheUI, ctx: &mut TheContext) {
+        self.server_ctx.snap_to_grid = self.option_snap_to_grid;
+        self.server_ctx.show_editing_geometry = self.option_show_gizmos;
+
+        ui.set_widget_value(
+            "OptionLeftToolbarCB",
+            ctx,
+            TheValue::Bool(self.show_left_toolbar),
+        );
+        ui.set_widget_value(
+            "OptionRightToolbarCB",
+            ctx,
+            TheValue::Bool(self.show_right_toolbar),
+        );
+        ui.set_widget_value("OptionSnapCB", ctx, TheValue::Bool(self.option_snap_to_grid));
+        ui.set_widget_value("OptionGridCB", ctx, TheValue::Bool(self.option_show_grid));
+        ui.set_widget_value("OptionGizmoCB", ctx, TheValue::Bool(self.option_show_gizmos));
+        ui.set_widget_value(
+            "TownSeedEdit",
+            ctx,
+            TheValue::Int(self.towngen_last_seed as i32),
+        );
+        ui.set_widget_value("TownRiverCB", ctx, TheValue::Bool(self.towngen_has_river));
+        ui.set_widget_value("TownWallsCB", ctx, TheValue::Bool(self.towngen_has_walls));
+        ui.set_widget_value("TownAutoBakeCB", ctx, TheValue::Bool(self.towngen_auto_bake));
+        ui.set_widget_value(
+            "OverlayTownDistrictsCB",
+            ctx,
+            TheValue::Bool(self.overlay_show_town_districts),
+        );
+        ui.set_widget_value(
+            "OverlayTownRoadsCB",
+            ctx,
+            TheValue::Bool(self.overlay_show_town_roads),
+        );
+        ui.set_widget_value(
+            "OverlayTownLandmarksCB",
+            ctx,
+            TheValue::Bool(self.overlay_show_town_landmarks),
+        );
+        ui.set_widget_value("MmorpgXpRateEdit", ctx, TheValue::Float(self.mmorpg_xp_rate));
+        ui.set_widget_value("MmorpgLootRateEdit", ctx, TheValue::Float(self.mmorpg_loot_rate));
+        ui.set_widget_value("MmorpgEventRateEdit", ctx, TheValue::Float(self.mmorpg_event_rate));
+
+        let theme_index = match self.theme_preset.as_str() {
+            "Light" => 1,
+            "Slate" => 2,
+            _ => 0,
+        };
+        ui.set_widget_value("ThemePresetDropdown", ctx, TheValue::Int(theme_index));
+        let town_preset_index = match self.towngen_preset.as_str() {
+            "Small Town" => 0,
+            "Large Town" => 1,
+            "Large City" => 3,
+            _ => 2,
+        };
+        ui.set_widget_value("TownPresetDropdown", ctx, TheValue::Int(town_preset_index));
+
+        self.rebuild_left_tool_name_layout(ui, ctx);
+        self.apply_toolbar_visibility(ui, ctx);
+        self.apply_theme_preset(ui, ctx);
+        self.apply_town_overlay_visibility();
+    }
+
+    fn generate_town_system_data(&mut self, ui: &mut TheUI, ctx: &mut TheContext) {
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(1);
+        self.towngen_last_seed = seed;
+        self.generate_town_system_data_with_seed(ui, ctx, seed);
+    }
+
+    fn town_preset_to_settings(&self, seed: u64) -> crate::game_logic::TownGeneratorSettings {
+        let (size, rings, districts) = match self.towngen_preset.as_str() {
+            "Small Town" => (720, 3, 5),
+            "Large Town" => (860, 4, 6),
+            "Small City" => (1024, 4, 7),
+            "Large City" => (1280, 5, 8),
+            _ => (1024, 4, 7),
+        };
+
+        crate::game_logic::TownGeneratorSettings {
+            seed,
+            town_name: if self.project.name.is_empty() {
+                "Procedural Town".to_string()
+            } else {
+                format!("{} Town", self.project.name)
+            },
+            size,
+            rings,
+            districts_per_ring: districts,
+            has_river: self.towngen_has_river,
+            has_walls: self.towngen_has_walls,
+        }
+    }
+
+    fn generate_town_system_data_with_seed(
+        &mut self,
+        ui: &mut TheUI,
+        ctx: &mut TheContext,
+        seed: u64,
+    ) {
+        self.towngen_last_seed = seed;
+
+        let settings = self.town_preset_to_settings(seed);
+
+        let generated = crate::game_logic::generate_town_map(&settings);
+        self.last_generated_town = Some(generated.clone());
+        let payload = serde_json::to_string_pretty(&generated).unwrap_or_else(|_| "{}".to_string());
+
+        let mut root_value = toml::from_str::<toml::Value>(&self.project.config)
+            .unwrap_or_else(|_| toml::Value::Table(toml::Table::new()));
+        let root = if let Some(root) = root_value.as_table_mut() {
+            root
+        } else {
+            root_value = toml::Value::Table(toml::Table::new());
+            root_value.as_table_mut().unwrap()
+        };
+
+        let tg_entry = root
+            .entry("town_generator".to_string())
+            .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+        if let Some(tg) = tg_entry.as_table_mut() {
+            tg.insert(
+                "source".to_string(),
+                toml::Value::String(
+                    "Inspired by watabou/TownGeneratorOS, adapted for Encheament Engine"
+                        .to_string(),
+                ),
+            );
+            tg.insert(
+                "source_repo".to_string(),
+                toml::Value::String("https://github.com/watabou/TownGeneratorOS".to_string()),
+            );
+            tg.insert(
+                "preset".to_string(),
+                toml::Value::String(self.towngen_preset.clone()),
+            );
+            tg.insert("seed".to_string(), toml::Value::Integer(seed as i64));
+            tg.insert(
+                "has_river".to_string(),
+                toml::Value::Boolean(self.towngen_has_river),
+            );
+            tg.insert(
+                "has_walls".to_string(),
+                toml::Value::Boolean(self.towngen_has_walls),
+            );
+            tg.insert(
+                "district_count".to_string(),
+                toml::Value::Integer(generated.districts.len() as i64),
+            );
+            tg.insert(
+                "road_count".to_string(),
+                toml::Value::Integer(generated.roads.len() as i64),
+            );
+            tg.insert(
+                "landmark_count".to_string(),
+                toml::Value::Integer(generated.landmarks.len() as i64),
+            );
+            tg.insert("last_generated".to_string(), toml::Value::String(payload));
+        }
+
+        if let Ok(config_text) = toml::to_string_pretty(&root_value) {
+            self.project.config = config_text;
+        }
+
+        let mut canvas = TheCanvas::new();
+        canvas.limiter_mut().set_max_size(Vec2::new(620, 240));
+        let mut layout = TheTextLayout::new(TheId::named("Town Generator Result"));
+        layout.set_margin(Vec4::new(12, 12, 12, 12));
+        layout.set_padding(6);
+
+        let mut txt = TheText::new(TheId::named("Town Generator Result Text"));
+        txt.set_text(format!(
+            "Town generated and embedded into project config.\n\
+             Preset: {}\n\
+             Seed: {}\n\
+             River: {}\n\
+             Walls: {}\n\
+             Districts: {}\n\
+             Roads: {}\n\
+             Landmarks: {}\n\
+             Config key: [town_generator]",
+            self.towngen_preset,
+            generated.seed,
+            self.towngen_has_river,
+            self.towngen_has_walls,
+            generated.districts.len(),
+            generated.roads.len(),
+            generated.landmarks.len()
+        ));
+        layout.add_pair("".to_string(), Box::new(txt));
+        canvas.set_layout(layout);
+        ui.show_dialog(
+            "Town Generator",
+            canvas,
+            vec![TheDialogButtonRole::Accept],
+            ctx,
+        );
+
+        ctx.ui.send(TheEvent::SetStatusText(
+            TheId::empty(),
+            "Town generator data created and stored in project config.".to_string(),
+        ));
+        self.persist_workspace_settings_to_project_config();
+
+        if self.towngen_auto_bake {
+            self.bake_generated_town_to_current_map(ui, ctx);
+        }
+    }
+
+    fn generate_rpg_mmorpg_system_data(&mut self, ui: &mut TheUI, ctx: &mut TheContext) {
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(1);
+        let world_name = if self.project.name.is_empty() {
+            "Encheament Online".to_string()
+        } else {
+            format!("{} Online", self.project.name)
+        };
+
+        let mut generated = crate::game_logic::generate_starter_rpg_mmorpg_config(seed, world_name);
+        generated.world_state.server_tick_ms =
+            ((generated.world_state.server_tick_ms as f32) / self.mmorpg_event_rate.max(0.1))
+                as u64;
+        self.last_generated_mmorpg = Some(generated.clone());
+        let payload = serde_json::to_string_pretty(&generated).unwrap_or_else(|_| "{}".to_string());
+
+        let mut root_value = toml::from_str::<toml::Value>(&self.project.config)
+            .unwrap_or_else(|_| toml::Value::Table(toml::Table::new()));
+        let root = if let Some(root) = root_value.as_table_mut() {
+            root
+        } else {
+            root_value = toml::Value::Table(toml::Table::new());
+            root_value.as_table_mut().unwrap()
+        };
+
+        let systems_entry = root
+            .entry("mmorpg_systems".to_string())
+            .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+        if let Some(systems) = systems_entry.as_table_mut() {
+            systems.insert("seed".to_string(), toml::Value::Integer(seed as i64));
+            systems.insert(
+                "world_name".to_string(),
+                toml::Value::String(generated.world_state.world_name.clone()),
+            );
+            systems.insert(
+                "class_count".to_string(),
+                toml::Value::Integer(generated.default_classes.len() as i64),
+            );
+            systems.insert(
+                "skill_count".to_string(),
+                toml::Value::Integer(generated.starter_skills.len() as i64),
+            );
+            systems.insert(
+                "quest_count".to_string(),
+                toml::Value::Integer(generated.starter_quests.len() as i64),
+            );
+            systems.insert(
+                "loot_entries".to_string(),
+                toml::Value::Integer(generated.starter_loot_table.len() as i64),
+            );
+            systems.insert("data".to_string(), toml::Value::String(payload));
+        }
+
+        if let Ok(config_text) = toml::to_string_pretty(&root_value) {
+            self.project.config = config_text;
+        }
+
+        let mut canvas = TheCanvas::new();
+        canvas.limiter_mut().set_max_size(Vec2::new(640, 260));
+        let mut layout = TheTextLayout::new(TheId::named("RpgMmorpg Generator Result"));
+        layout.set_margin(Vec4::new(12, 12, 12, 12));
+        layout.set_padding(6);
+
+        let mut txt = TheText::new(TheId::named("RpgMmorpg Generator Result Text"));
+        txt.set_text(format!(
+            "RPG/MMORPG systems generated and embedded into project config.\n\
+             Seed: {}\n\
+             World: {}\n\
+             Classes: {}\n\
+             Skills: {}\n\
+             Quests: {}\n\
+             Loot Entries: {}\n\
+             Config key: [mmorpg_systems]",
+            generated.seed,
+            generated.world_state.world_name,
+            generated.default_classes.len(),
+            generated.starter_skills.len(),
+            generated.starter_quests.len(),
+            generated.starter_loot_table.len()
+        ));
+        layout.add_pair("".to_string(), Box::new(txt));
+        canvas.set_layout(layout);
+        ui.show_dialog(
+            "RPG/MMORPG Systems",
+            canvas,
+            vec![TheDialogButtonRole::Accept],
+            ctx,
+        );
+
+        ctx.ui.send(TheEvent::SetStatusText(
+            TheId::empty(),
+            "RPG/MMORPG systems created and stored in project config.".to_string(),
+        ));
+    }
+
+    fn apply_town_overlay_visibility(&mut self) {
+        if let Some(map) = self.project.get_map_mut(&self.server_ctx) {
+            for sector in &mut map.sectors {
+                if sector
+                    .properties
+                    .get_bool_default("town_generated_district", false)
+                {
+                    sector
+                        .properties
+                        .set("visible", Value::Bool(self.overlay_show_town_districts));
+                }
+            }
+
+            for linedef in &mut map.linedefs {
+                if linedef.properties.get_bool_default("town_generated_road", false) {
+                    linedef
+                        .properties
+                        .set("visible", Value::Bool(self.overlay_show_town_roads));
+                }
+            }
+
+            for item in &mut map.items {
+                if item
+                    .attributes
+                    .get_bool_default("town_generated_landmark", false)
+                {
+                    item.attributes.set(
+                        "visible",
+                        Value::Bool(self.overlay_show_town_landmarks),
+                    );
+                }
+            }
+        }
+    }
+
+    fn bake_generated_town_to_current_map(
+        &mut self,
+        ui: &mut TheUI,
+        ctx: &mut TheContext,
+    ) -> bool {
+        let Some(generated) = self.last_generated_town.clone() else {
+            ctx.ui.send(TheEvent::SetStatusText(
+                TheId::empty(),
+                "No generated town data to bake. Generate a town first.".to_string(),
+            ));
+            return false;
+        };
+
+        let pc = self.server_ctx.pc;
+        let mut old_map_for_undo: Option<Map> = None;
+        let mut new_map_for_undo: Option<Map> = None;
+
+        if let Some(map) = self.project.get_map_mut(&self.server_ctx) {
+            old_map_for_undo = Some(map.clone());
+
+            let scale = 0.20f32;
+            let center = generated.size as f32 * 0.5;
+
+            for district in &generated.districts {
+                let cx = (district.center.0 - center) * scale;
+                let cy = (district.center.1 - center) * scale;
+                let radius = district.radius * scale;
+                let edges = 6usize;
+
+                map.possible_polygon.clear();
+                let mut vertex_ids = Vec::with_capacity(edges);
+                for i in 0..edges {
+                    let angle = (i as f32 / edges as f32) * std::f32::consts::TAU;
+                    let vx = cx + angle.cos() * radius;
+                    let vy = cy + angle.sin() * radius;
+                    let vid = map.add_vertex_at(vx, vy);
+                    vertex_ids.push(vid);
+                }
+
+                for i in 0..edges {
+                    let a = vertex_ids[i];
+                    let b = vertex_ids[(i + 1) % edges];
+                    map.create_linedef_manual(a, b);
+                }
+
+                if let Some(sector_id) = map.close_polygon_manual()
+                    && let Some(sector) = map.find_sector_mut(sector_id)
+                {
+                    sector
+                        .properties
+                        .set("town_generated_district", Value::Bool(true));
+                    sector
+                        .properties
+                        .set("district_id", Value::Int(district.id as i32));
+                    sector.properties.set(
+                        "district_population",
+                        Value::Int(district.population as i32),
+                    );
+                    sector
+                        .properties
+                        .set("district_wealth", Value::Float(district.wealth));
+                    sector
+                        .properties
+                        .set("district_danger", Value::Float(district.danger));
+                    sector.properties.set(
+                        "district_ward",
+                        Value::Str(format!("{:?}", district.ward)),
+                    );
+                }
+            }
+
+            for road in &generated.roads {
+                let from = generated.districts.iter().find(|d| d.id == road.from);
+                let to = generated.districts.iter().find(|d| d.id == road.to);
+                if let (Some(a), Some(b)) = (from, to) {
+                    let ax = (a.center.0 - center) * scale;
+                    let ay = (a.center.1 - center) * scale;
+                    let bx = (b.center.0 - center) * scale;
+                    let by = (b.center.1 - center) * scale;
+                    let va = map.add_vertex_at(ax, ay);
+                    let vb = map.add_vertex_at(bx, by);
+                    let lid = map.create_linedef_manual(va, vb);
+                    map.possible_polygon.clear();
+                    if let Some(linedef) = map.find_linedef_mut(lid) {
+                        linedef
+                            .properties
+                            .set("town_generated_road", Value::Bool(true));
+                        linedef
+                            .properties
+                            .set("road_primary", Value::Bool(road.primary));
+                        linedef.properties.set("wall_width", Value::Float(0.0));
+                        linedef.properties.set("wall_height", Value::Float(0.0));
+                    }
+                }
+            }
+
+            for landmark in &generated.landmarks {
+                if let Some(district) = generated
+                    .districts
+                    .iter()
+                    .find(|d| d.id == landmark.district_id)
+                {
+                    let mut poi = rusterix::Item::new();
+                    poi.item_type = "town_landmark".to_string();
+                    poi.attributes
+                        .set("town_generated_landmark", Value::Bool(true));
+                    poi.attributes
+                        .set("landmark_name", Value::Str(landmark.name.clone()));
+                    poi.attributes
+                        .set("district_id", Value::Int(landmark.district_id as i32));
+                    poi.position.x = (district.center.0 - center) * scale;
+                    poi.position.z = (district.center.1 - center) * scale;
+                    map.items.push(poi);
+                }
+            }
+
+            map.properties
+                .set("town_generated", Value::Bool(true));
+            map.properties
+                .set("town_generated_seed", Value::Int(generated.seed as i32));
+
+            new_map_for_undo = Some(map.clone());
+        }
+
+        self.apply_town_overlay_visibility();
+
+        if let (Some(old_map), Some(new_map)) = (old_map_for_undo, new_map_for_undo) {
+            let atom = ProjectUndoAtom::MapEdit(pc, Box::new(old_map), Box::new(new_map));
+            UNDOMANAGER.write().unwrap().add_undo(atom, ctx);
+            crate::utils::scenemanager_render_map(&self.project, &self.server_ctx);
+            RUSTERIX.write().unwrap().set_dirty();
+            self.mapeditor.load_from_project(ui, ctx, &self.project);
+
+            ctx.ui.send(TheEvent::SetStatusText(
+                TheId::empty(),
+                "Town data baked into current map (districts, roads, landmarks).".to_string(),
+            ));
+            return true;
+        }
+
+        false
+    }
+
+    fn generate_quests_from_last_town(&mut self) -> usize {
+        let Some(town) = &self.last_generated_town else {
+            return 0;
+        };
+        let mut added = 0usize;
+
+        let mut root_value = toml::from_str::<toml::Value>(&self.project.config)
+            .unwrap_or_else(|_| toml::Value::Table(toml::Table::new()));
+        let root = if let Some(root) = root_value.as_table_mut() {
+            root
+        } else {
+            root_value = toml::Value::Table(toml::Table::new());
+            root_value.as_table_mut().unwrap()
+        };
+
+        let systems_entry = root
+            .entry("mmorpg_systems".to_string())
+            .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+        if let Some(systems) = systems_entry.as_table_mut() {
+            let mut quests = Vec::new();
+            for district in &town.districts {
+                let title = format!("Secure {:?}", district.ward);
+                let obj = serde_json::json!({
+                    "quest_id": format!("q_town_{}", district.id),
+                    "title": title,
+                    "min_level": 1 + (district.danger * 10.0) as i32,
+                    "district_id": district.id,
+                    "reward_xp": ((120.0 + district.wealth * 220.0) * self.mmorpg_xp_rate) as i64,
+                    "reward_gold": (40.0 + district.wealth * 120.0) as i64
+                });
+                quests.push(obj);
+                added += 1;
+            }
+            systems.insert(
+                "auto_quests_from_town".to_string(),
+                toml::Value::String(
+                    serde_json::to_string_pretty(&quests).unwrap_or_else(|_| "[]".to_string()),
+                ),
+            );
+        }
+
+        if let Ok(config_text) = toml::to_string_pretty(&root_value) {
+            self.project.config = config_text;
+        }
+        added
+    }
+
+    fn spawn_pois_from_last_town(&mut self) -> usize {
+        let Some(town) = &self.last_generated_town else {
+            return 0;
+        };
+        let mut count = 0usize;
+        if let Some(map) = self.project.get_map_mut(&self.server_ctx) {
+            let center = town.size as f32 * 0.5;
+            let scale = 0.20f32;
+            for landmark in &town.landmarks {
+                if let Some(district) = town
+                    .districts
+                    .iter()
+                    .find(|d| d.id == landmark.district_id)
+                {
+                    let mut entity = rusterix::Entity::new();
+                    entity.attributes.set("class_name", Value::Str("npc".to_string()));
+                    entity.attributes.set(
+                        "display_name",
+                        Value::Str(format!("{} Keeper", landmark.name)),
+                    );
+                    entity.attributes.set("town_generated_poi", Value::Bool(true));
+                    entity.position.x = (district.center.0 - center) * scale;
+                    entity.position.z = (district.center.1 - center) * scale;
+                    map.entities.push(entity);
+                    count += 1;
+                }
+            }
+        }
+        count
+    }
+
+    fn run_mmorpg_sim_tick(&mut self) -> String {
+        if let Some(cfg) = &mut self.last_generated_mmorpg {
+            let tick = (cfg.world_state.server_tick_ms as f32 / self.mmorpg_event_rate.max(0.1))
+                as u64;
+            crate::game_logic::tick_world(&mut cfg.world_state, tick.max(1));
+            return format!(
+                "World tick simulated: +{}ms, world_time={}ms",
+                tick.max(1),
+                cfg.world_state.world_time_ms
+            );
+        }
+        "No MMORPG config generated yet.".to_string()
+    }
+
+    fn run_mmorpg_sim_combat(&mut self) -> String {
+        let mut attacker = crate::game_logic::CharacterProfile {
+            id: "hero_1".to_string(),
+            name: "Hero".to_string(),
+            class: crate::game_logic::CharacterClass::Warrior,
+            level: 4,
+            xp: 0,
+            stats: crate::game_logic::StatBlock {
+                hp: 180,
+                mp: 30,
+                attack: (24.0 * self.mmorpg_xp_rate.max(0.1)) as i32,
+                defense: 11,
+                spell_power: 8,
+                crit_chance: 0.18,
+                haste: 0.0,
+            },
+            unlocked_skills: std::collections::BTreeSet::new(),
+            equipped_item_level: 8,
+        };
+        let mut defender = crate::game_logic::CharacterProfile {
+            id: "mob_1".to_string(),
+            name: "Raider".to_string(),
+            class: crate::game_logic::CharacterClass::Rogue,
+            level: 3,
+            xp: 0,
+            stats: crate::game_logic::StatBlock {
+                hp: 140,
+                mp: 20,
+                attack: 18,
+                defense: 8,
+                spell_power: 2,
+                crit_chance: 0.1,
+                haste: 0.0,
+            },
+            unlocked_skills: std::collections::BTreeSet::new(),
+            equipped_item_level: 6,
+        };
+        let ev = crate::game_logic::resolve_combat_event(&attacker, &mut defender, None, 1337);
+        let gained = ((80.0 + ev.mitigated_damage as f32 * 2.0) * self.mmorpg_xp_rate.max(0.1))
+            as u64;
+        let lvups = crate::game_logic::apply_xp(&mut attacker, gained);
+        format!(
+            "Combat: dmg={}, crit={}, defender_hp={}, attacker_level={}, levelups={}",
+            ev.mitigated_damage, ev.did_crit, ev.defender_hp_after, attacker.level, lvups
+        )
+    }
+
+    fn run_mmorpg_sim_loot(&mut self) -> String {
+        let mut entries = vec![
+            crate::game_logic::LootTableEntry {
+                item_id: "gold_coin".to_string(),
+                rarity: crate::game_logic::ItemRarity::Common,
+                min_qty: 6,
+                max_qty: 22,
+                weight: (200.0 * self.mmorpg_loot_rate.max(0.1)) as u32,
+            },
+            crate::game_logic::LootTableEntry {
+                item_id: "healing_potion".to_string(),
+                rarity: crate::game_logic::ItemRarity::Uncommon,
+                min_qty: 1,
+                max_qty: 3,
+                weight: (90.0 * self.mmorpg_loot_rate.max(0.1)) as u32,
+            },
+            crate::game_logic::LootTableEntry {
+                item_id: "mystic_shard".to_string(),
+                rarity: crate::game_logic::ItemRarity::Rare,
+                min_qty: 1,
+                max_qty: 1,
+                weight: (20.0 * self.mmorpg_loot_rate.max(0.1)) as u32,
+            },
+        ];
+        entries.retain(|e| e.weight > 0);
+        let drops = crate::game_logic::roll_loot(&entries, 4242, 3);
+        format!("Loot sim generated {} drops", drops.len())
+    }
 }
 
 impl TheTrait for Editor {
@@ -309,6 +1856,24 @@ impl TheTrait for Editor {
             option_show_grid: true,
             option_show_gizmos: true,
             theme_preset: "Dark".to_string(),
+            left_toolbar_active_tool: None,
+            left_group_modes_expanded: true,
+            left_group_2d_expanded: true,
+            left_group_3d_expanded: true,
+            left_group_editor_expanded: true,
+            towngen_preset: "Small City".to_string(),
+            towngen_has_river: true,
+            towngen_has_walls: true,
+            towngen_last_seed: 0,
+            towngen_auto_bake: false,
+            overlay_show_town_districts: true,
+            overlay_show_town_roads: true,
+            overlay_show_town_landmarks: true,
+            mmorpg_xp_rate: 1.0,
+            mmorpg_loot_rate: 1.0,
+            mmorpg_event_rate: 1.0,
+            last_generated_town: None,
+            last_generated_mmorpg: None,
         }
     }
 
@@ -369,6 +1934,7 @@ impl TheTrait for Editor {
     }
 
     fn init_ui(&mut self, ui: &mut TheUI, ctx: &mut TheContext) {
+        self.load_workspace_settings_from_project_config();
 
         // Show dev title page if enabled
         if self.show_title_page {
@@ -549,6 +2115,99 @@ impl TheTrait for Editor {
         tools_menu.add(TheContextMenuItem::new("Data".to_string(), TheId::named("MenuTool::Data Tool")));
         tools_menu.add(TheContextMenuItem::new("Config".to_string(), TheId::named("MenuTool::Config Tool")));
         tools_menu.add(TheContextMenuItem::new("Info".to_string(), TheId::named("MenuTool::Info Tool")));
+        tools_menu.add_separator();
+        tools_menu.add(TheContextMenuItem::new(
+            "Generate Town (Watabou-style)".to_string(),
+            TheId::named("MenuTools::GenerateTown"),
+        ));
+        let mut town_preset_menu = TheContextMenu::named("Town Presets".to_string());
+        town_preset_menu.add(TheContextMenuItem::new(
+            "Small Town".to_string(),
+            TheId::named("MenuTownPreset::SmallTown"),
+        ));
+        town_preset_menu.add(TheContextMenuItem::new(
+            "Large Town".to_string(),
+            TheId::named("MenuTownPreset::LargeTown"),
+        ));
+        town_preset_menu.add(TheContextMenuItem::new(
+            "Small City".to_string(),
+            TheId::named("MenuTownPreset::SmallCity"),
+        ));
+        town_preset_menu.add(TheContextMenuItem::new(
+            "Large City".to_string(),
+            TheId::named("MenuTownPreset::LargeCity"),
+        ));
+
+        let mut town_ops_menu = TheContextMenu::named("Town Ops".to_string());
+        town_ops_menu.add(TheContextMenuItem::new_submenu(
+            "Town Size Presets".to_string(),
+            TheId::named("MenuTools::TownPresets"),
+            town_preset_menu,
+        ));
+        town_ops_menu.add(TheContextMenuItem::new(
+            "Town: Reseed + Generate".to_string(),
+            TheId::named("MenuTown::ReseedGenerate"),
+        ));
+        town_ops_menu.add(TheContextMenuItem::new(
+            "Town: Regenerate Same Seed".to_string(),
+            TheId::named("MenuTown::Regenerate"),
+        ));
+        town_ops_menu.add(TheContextMenuItem::new(
+            "Town: Toggle River".to_string(),
+            TheId::named("MenuTown::ToggleRiver"),
+        ));
+        town_ops_menu.add(TheContextMenuItem::new(
+            "Town: Toggle Walls".to_string(),
+            TheId::named("MenuTown::ToggleWalls"),
+        ));
+        town_ops_menu.add(TheContextMenuItem::new(
+            "Town: Bake To Current Map".to_string(),
+            TheId::named("MenuTown::BakeMap"),
+        ));
+        town_ops_menu.add(TheContextMenuItem::new(
+            "Town: Export JSON".to_string(),
+            TheId::named("MenuTown::ExportJson"),
+        ));
+        town_ops_menu.add(TheContextMenuItem::new(
+            "Town: Import JSON".to_string(),
+            TheId::named("MenuTown::ImportJson"),
+        ));
+        tools_menu.add(TheContextMenuItem::new_submenu(
+            "Town Systems".to_string(),
+            TheId::named("MenuTools::TownSystems"),
+            town_ops_menu,
+        ));
+
+        let mut mmo_ops_menu = TheContextMenu::named("MMO Ops".to_string());
+        mmo_ops_menu.add(TheContextMenuItem::new(
+            "Town: Generate MMO Quests".to_string(),
+            TheId::named("MenuTown::AutoQuest"),
+        ));
+        mmo_ops_menu.add(TheContextMenuItem::new(
+            "Town: Spawn MMO POIs".to_string(),
+            TheId::named("MenuTown::SpawnPoi"),
+        ));
+        mmo_ops_menu.add(TheContextMenuItem::new(
+            "Generate RPG/MMORPG Systems".to_string(),
+            TheId::named("MenuTools::GenerateRpgMmorpg"),
+        ));
+        mmo_ops_menu.add(TheContextMenuItem::new(
+            "MMO Sim: Tick".to_string(),
+            TheId::named("MenuMmoSim::Tick"),
+        ));
+        mmo_ops_menu.add(TheContextMenuItem::new(
+            "MMO Sim: Combat".to_string(),
+            TheId::named("MenuMmoSim::Combat"),
+        ));
+        mmo_ops_menu.add(TheContextMenuItem::new(
+            "MMO Sim: Loot".to_string(),
+            TheId::named("MenuMmoSim::Loot"),
+        ));
+        tools_menu.add(TheContextMenuItem::new_submenu(
+            "RPG/MMORPG".to_string(),
+            TheId::named("MenuTools::RpgMmorpg"),
+            mmo_ops_menu,
+        ));
 
         let mut build_menu = TheContextMenu::named("Build".to_string());
         build_menu.add(TheContextMenuItem::new("Play".to_string(), TheId::named("MenuBuild::Play")));
@@ -562,6 +2221,25 @@ impl TheTrait for Editor {
         settings_menu.add(TheContextMenuItem::new("Toggle Snap".to_string(), TheId::named("MenuOption::Snap")));
         settings_menu.add(TheContextMenuItem::new("Toggle Grid".to_string(), TheId::named("MenuOption::Grid")));
         settings_menu.add(TheContextMenuItem::new("Toggle Gizmos".to_string(), TheId::named("MenuOption::Gizmos")));
+        settings_menu.add_separator();
+        let mut ide_layout_menu = TheContextMenu::named("IDE Layout Presets".to_string());
+        ide_layout_menu.add(TheContextMenuItem::new(
+            "Unreal-like Layout".to_string(),
+            TheId::named("MenuIde::LayoutUnreal"),
+        ));
+        ide_layout_menu.add(TheContextMenuItem::new(
+            "Minimal Layout".to_string(),
+            TheId::named("MenuIde::LayoutMinimal"),
+        ));
+        settings_menu.add(TheContextMenuItem::new_submenu(
+            "IDE Layout".to_string(),
+            TheId::named("MenuIde::LayoutSubmenu"),
+            ide_layout_menu,
+        ));
+        settings_menu.add(TheContextMenuItem::new(
+            "IDE Feature Matrix".to_string(),
+            TheId::named("MenuIde::FeatureMatrix"),
+        ));
 
         let mut help_menu = TheContextMenu::named("Help".to_string());
         help_menu.add(TheContextMenuItem::new("Docs".to_string(), TheId::named("MenuHelp::Docs")));
@@ -591,6 +2269,7 @@ impl TheTrait for Editor {
                 let quick_id = format!("TopTool::{}", tool.id().name);
                 let mut button = TheMenubarButton::new(TheId::named(&quick_id));
                 button.set_icon_name(tool.icon_name());
+                button.set_has_state(true);
                 button.set_status_text(&format!("Activate {}", tool.info()));
                 top_quick_layout.add_widget(Box::new(button));
             }
@@ -599,197 +2278,16 @@ impl TheTrait for Editor {
         top_canvas.set_bottom(top_quick_canvas);
         ui.canvas.set_top(top_canvas);
 
-        // Sidebar
-        self.sidebar.init_ui(ui, ctx, &mut self.server_ctx);
-
-        // Docks
-        let bottom_panels = DOCKMANAGER.write().unwrap().init(ctx);
-
-        let mut editor_canvas: TheCanvas = TheCanvas::new();
-
-        let mut editor_stack = TheStackLayout::new(TheId::named("Editor Stack"));
-        let poly_canvas = self.mapeditor.init_ui(ui, ctx, &mut self.project);
-        editor_stack.add_canvas(poly_canvas);
-
-        // Add Dock Editors
-        DOCKMANAGER
-            .write()
-            .unwrap()
-            .add_editors_to_stack(&mut editor_stack, ctx);
-
-        editor_canvas.set_layout(editor_stack);
-
-        // Main V Layout
-        let mut vsplitlayout = TheSharedVLayout::new(TheId::named("Shared VLayout"));
-        vsplitlayout.add_canvas(editor_canvas);
-        vsplitlayout.add_canvas(bottom_panels);
-        vsplitlayout.set_shared_ratio(crate::DEFAULT_VLAYOUT_RATIO);
-        vsplitlayout.set_mode(TheSharedVLayoutMode::Shared);
-
-        let mut shared_canvas = TheCanvas::new();
-        shared_canvas.set_layout(vsplitlayout);
-
-        // Tool List
-        let mut tool_list_canvas: TheCanvas = TheCanvas::new();
-
-        let mut tool_list_bar_canvas = TheCanvas::new();
-        tool_list_bar_canvas.set_widget(TheToolListBar::new(TheId::empty()));
-        tool_list_canvas.set_top(tool_list_bar_canvas);
-
-        let mut v_tool_list_layout = TheVLayout::new(TheId::named("Tool List Layout"));
-        v_tool_list_layout.limiter_mut().set_max_width(51);
-        v_tool_list_layout.set_margin(Vec4::new(2, 2, 2, 2));
-        v_tool_list_layout.set_padding(1);
-
-        TOOLLIST
-            .write()
-            .unwrap()
-            .set_active_editor(&mut v_tool_list_layout, ctx);
-
-        tool_list_canvas.set_layout(v_tool_list_layout);
-
-        let mut tool_list_border_canvas = TheCanvas::new();
-        let mut border_widget = TheIconView::new(TheId::empty());
-        border_widget.set_border_color(Some([82, 82, 82, 255]));
-        border_widget.limiter_mut().set_max_width(1);
-        border_widget.limiter_mut().set_max_height(i32::MAX);
-        tool_list_border_canvas.set_widget(border_widget);
-
-        tool_list_canvas.set_right(tool_list_border_canvas);
-        shared_canvas.set_left(tool_list_canvas);
-
-        // Right side GUI/API toolbar
-        let mut right_tool_canvas = TheCanvas::new();
-
-        let mut right_tool_bar_canvas = TheCanvas::new();
-        right_tool_bar_canvas.set_widget(TheToolListBar::new(TheId::named("Right Tool Bar")));
-        right_tool_canvas.set_top(right_tool_bar_canvas);
-
-        let mut right_tool_layout = TheVLayout::new(TheId::named("Right Tool Layout"));
-        right_tool_layout.limiter_mut().set_max_width(51);
-        right_tool_layout.set_margin(Vec4::new(2, 2, 2, 2));
-        right_tool_layout.set_padding(1);
-
-        let mut add_quick_button = |id: &str, icon: &str, status: &str| {
-            let mut button = TheMenubarButton::new(TheId::named(id));
-            button.set_icon_name(icon.to_string());
-            button.set_status_text(status);
-            right_tool_layout.add_widget(Box::new(button));
-        };
-
-        add_quick_button("QuickGuiOpen", "icon_role_load", "Open project");
-        add_quick_button("QuickGuiSave", "icon_role_save", "Save project");
-        add_quick_button("QuickGuiUndo", "icon_role_undo", "Undo");
-        add_quick_button("QuickGuiRedo", "icon_role_redo", "Redo");
-        add_quick_button("QuickGuiPlay", "play", "Run game");
-        add_quick_button("QuickGuiPause", "play-pause", "Pause game");
-        add_quick_button("QuickGuiStop", "stop-fill", "Stop game");
-        add_quick_button("QuickGuiHelp", "question-mark", "Toggle help mode");
-        add_quick_button("QuickThemeDark", "dark_tabbar_selected", "Dark theme preset");
-        add_quick_button("QuickThemeLight", "dark_tabbar_hover", "Light theme preset");
-        add_quick_button("QuickThemeSlate", "dark_tabbar_normal", "Slate theme preset");
-        add_quick_button("QuickOptSnap", "selection", "Toggle snap-to-grid");
-        add_quick_button("QuickOptGrid", "square", "Toggle grid visibility");
-        add_quick_button("QuickOptGizmos", "transform", "Toggle gizmos");
-
-        if let Ok(toollist) = TOOLLIST.read() {
-            for tool in &toollist.game_tools {
-                let quick_id = format!("RightTool::{}", tool.id().name);
-                let mut button = TheMenubarButton::new(TheId::named(&quick_id));
-                button.set_icon_name(tool.icon_name());
-                button.set_status_text(&format!("Activate {}", tool.info()));
-                right_tool_layout.add_widget(Box::new(button));
-            }
-        }
-
-        right_tool_canvas.set_layout(right_tool_layout);
-
-        // Right side settings/options panel
-        let mut right_settings_canvas = TheCanvas::new();
-        right_settings_canvas
-            .set_widget(TheTraybar::new(TheId::named("Right Settings Bar")));
-
-        let mut right_settings_layout = TheTextLayout::new(TheId::named("Right Settings Layout"));
-        right_settings_layout.set_margin(Vec4::new(4, 4, 4, 4));
-        right_settings_layout.set_padding(4);
-        right_settings_layout.limiter_mut().set_max_width(260);
-
-        let mut theme_dropdown = TheDropdownMenu::new(TheId::named("ThemePresetDropdown"));
-        theme_dropdown.add_option("Dark".to_string());
-        theme_dropdown.add_option("Light".to_string());
-        theme_dropdown.add_option("Slate".to_string());
-        let theme_index = match self.theme_preset.as_str() {
-            "Light" => 1,
-            "Slate" => 2,
-            _ => 0,
-        };
-        theme_dropdown.set_selected_index(theme_index);
-        right_settings_layout.add_pair("Theme".to_string(), Box::new(theme_dropdown));
-
-        let mut snap_cb = TheCheckButton::new(TheId::named("OptionSnapCB"));
-        snap_cb.set_value(TheValue::Bool(self.option_snap_to_grid));
-        right_settings_layout.add_pair("Snap".to_string(), Box::new(snap_cb));
-
-        let mut grid_cb = TheCheckButton::new(TheId::named("OptionGridCB"));
-        grid_cb.set_value(TheValue::Bool(self.option_show_grid));
-        right_settings_layout.add_pair("Grid".to_string(), Box::new(grid_cb));
-
-        let mut gizmo_cb = TheCheckButton::new(TheId::named("OptionGizmoCB"));
-        gizmo_cb.set_value(TheValue::Bool(self.option_show_gizmos));
-        right_settings_layout.add_pair("Gizmos".to_string(), Box::new(gizmo_cb));
-
-        let mut left_cb = TheCheckButton::new(TheId::named("OptionLeftToolbarCB"));
-        left_cb.set_value(TheValue::Bool(self.show_left_toolbar));
-        right_settings_layout.add_pair("Left Bar".to_string(), Box::new(left_cb));
-
-        let mut right_cb = TheCheckButton::new(TheId::named("OptionRightToolbarCB"));
-        right_cb.set_value(TheValue::Bool(self.show_right_toolbar));
-        right_settings_layout.add_pair("Right Bar".to_string(), Box::new(right_cb));
-
-        let mut fps_edit = TheTextLineEdit::new(TheId::named("OptionTargetFpsEdit"));
-        fps_edit.set_value(TheValue::Int(CONFIGEDITOR.read().unwrap().target_fps));
-        fps_edit.set_range(TheValue::RangeI32(1..=120));
-        fps_edit.set_continuous(true);
-        right_settings_layout.add_pair("FPS".to_string(), Box::new(fps_edit));
-
-        let mut tick_edit = TheTextLineEdit::new(TheId::named("OptionTickMsEdit"));
-        tick_edit.set_value(TheValue::Int(CONFIGEDITOR.read().unwrap().game_tick_ms));
-        tick_edit.set_range(TheValue::RangeI32(10..=2000));
-        tick_edit.set_continuous(true);
-        right_settings_layout.add_pair("Tick ms".to_string(), Box::new(tick_edit));
-
-        let mut grid_size_edit = TheTextLineEdit::new(TheId::named("OptionGridSizeEdit"));
-        grid_size_edit.set_value(TheValue::Int(CONFIGEDITOR.read().unwrap().grid_size));
-        grid_size_edit.set_range(TheValue::RangeI32(4..=256));
-        grid_size_edit.set_continuous(true);
-        right_settings_layout.add_pair("Grid Size".to_string(), Box::new(grid_size_edit));
-
-        right_settings_canvas.set_layout(right_settings_layout);
-        right_tool_canvas.set_bottom(right_settings_canvas);
-
-        let mut right_tool_border_canvas = TheCanvas::new();
-        let mut right_border_widget = TheIconView::new(TheId::empty());
-        right_border_widget.set_border_color(Some([82, 82, 82, 255]));
-        right_border_widget.limiter_mut().set_max_width(1);
-        right_border_widget.limiter_mut().set_max_height(i32::MAX);
-        right_tool_border_canvas.set_widget(right_border_widget);
-        right_tool_canvas.set_left(right_tool_border_canvas);
-
-        shared_canvas.set_right(right_tool_canvas);
-
-        ui.canvas.set_center(shared_canvas);
-
-        let mut status_canvas = TheCanvas::new();
-        let mut statusbar = TheStatusbar::new(TheId::named("Statusbar"));
-        statusbar.set_text(fl!("info_welcome"));
-        status_canvas.set_widget(statusbar);
-
-        ui.canvas.set_bottom(status_canvas);
+        let workspace_canvas = self.build_ue5_workspace_canvas(ui, ctx);
+        ui.canvas.set_center(workspace_canvas);
+        ui.canvas.set_bottom(self.build_status_canvas());
 
         self.apply_toolbar_visibility(ui, ctx);
         self.apply_theme_preset(ui, ctx);
+        self.sync_left_toolbar_active_from_toollist(ctx);
         self.server_ctx.snap_to_grid = self.option_snap_to_grid;
         self.server_ctx.show_editing_geometry = self.option_show_gizmos;
+        self.persist_workspace_settings_to_project_config();
 
         // -
 
@@ -864,6 +2362,8 @@ impl TheTrait for Editor {
     fn update_ui(&mut self, ui: &mut TheUI, ctx: &mut TheContext) -> bool {
         let mut redraw = false;
         let mut update_server_icons = false;
+        let mut workspace_prefs_dirty = false;
+        self.sync_left_toolbar_active_from_toollist(ctx);
 
         // Make sure on first startup the active tool is properly selected
         if self.update_counter == 0 {
@@ -1435,6 +2935,109 @@ impl TheTrait for Editor {
                             TheId::named("Stop"),
                             TheWidgetState::Clicked,
                         ));
+                    } else if item_id.name == "MenuTools::GenerateTown" {
+                        self.generate_town_system_data(ui, ctx);
+                        redraw = true;
+                    } else if item_id.name == "MenuTownPreset::SmallTown" {
+                        self.towngen_preset = "Small Town".to_string();
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Town preset set: Small Town".to_string(),
+                        ));
+                        workspace_prefs_dirty = true;
+                    } else if item_id.name == "MenuTownPreset::LargeTown" {
+                        self.towngen_preset = "Large Town".to_string();
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Town preset set: Large Town".to_string(),
+                        ));
+                        workspace_prefs_dirty = true;
+                    } else if item_id.name == "MenuTownPreset::SmallCity" {
+                        self.towngen_preset = "Small City".to_string();
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Town preset set: Small City".to_string(),
+                        ));
+                        workspace_prefs_dirty = true;
+                    } else if item_id.name == "MenuTownPreset::LargeCity" {
+                        self.towngen_preset = "Large City".to_string();
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Town preset set: Large City".to_string(),
+                        ));
+                        workspace_prefs_dirty = true;
+                    } else if item_id.name == "MenuTown::ReseedGenerate" {
+                        let seed = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs())
+                            .unwrap_or(1);
+                        self.generate_town_system_data_with_seed(ui, ctx, seed);
+                        redraw = true;
+                    } else if item_id.name == "MenuTown::Regenerate" {
+                        let seed = if self.towngen_last_seed == 0 {
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map(|d| d.as_secs())
+                                .unwrap_or(1)
+                        } else {
+                            self.towngen_last_seed
+                        };
+                        self.generate_town_system_data_with_seed(ui, ctx, seed);
+                        redraw = true;
+                    } else if item_id.name == "MenuTown::ToggleRiver" {
+                        self.towngen_has_river = !self.towngen_has_river;
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            format!("Town river option: {}", self.towngen_has_river),
+                        ));
+                        workspace_prefs_dirty = true;
+                    } else if item_id.name == "MenuTown::ToggleWalls" {
+                        self.towngen_has_walls = !self.towngen_has_walls;
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            format!("Town walls option: {}", self.towngen_has_walls),
+                        ));
+                        workspace_prefs_dirty = true;
+                    } else if item_id.name == "MenuTown::BakeMap" {
+                        self.bake_generated_town_to_current_map(ui, ctx);
+                        redraw = true;
+                    } else if item_id.name == "MenuTown::ExportJson" {
+                        ctx.ui.save_file_requester(
+                            TheId::named_with_id("ExportTownJson", Uuid::new_v4()),
+                            "Export Town Data".into(),
+                            TheFileExtension::new("JSON".into(), vec!["json".to_string()]),
+                        );
+                    } else if item_id.name == "MenuTown::ImportJson" {
+                        ctx.ui.open_file_requester(
+                            TheId::named_with_id("ImportTownJson", Uuid::new_v4()),
+                            "Import Town Data".into(),
+                            TheFileExtension::new("JSON".into(), vec!["json".to_string()]),
+                        );
+                    } else if item_id.name == "MenuTown::AutoQuest" {
+                        let n = self.generate_quests_from_last_town();
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            format!("Generated {} MMO quests from town districts.", n),
+                        ));
+                    } else if item_id.name == "MenuTown::SpawnPoi" {
+                        let n = self.spawn_pois_from_last_town();
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            format!("Spawned {} town POI NPCs/entities.", n),
+                        ));
+                        redraw = true;
+                    } else if item_id.name == "MenuTools::GenerateRpgMmorpg" {
+                        self.generate_rpg_mmorpg_system_data(ui, ctx);
+                        redraw = true;
+                    } else if item_id.name == "MenuMmoSim::Tick" {
+                        let msg = self.run_mmorpg_sim_tick();
+                        ctx.ui.send(TheEvent::SetStatusText(TheId::empty(), msg));
+                    } else if item_id.name == "MenuMmoSim::Combat" {
+                        let msg = self.run_mmorpg_sim_combat();
+                        ctx.ui.send(TheEvent::SetStatusText(TheId::empty(), msg));
+                    } else if item_id.name == "MenuMmoSim::Loot" {
+                        let msg = self.run_mmorpg_sim_loot();
+                        ctx.ui.send(TheEvent::SetStatusText(TheId::empty(), msg));
                     } else if item_id.name == "MenuView::ToggleLeft" {
                         self.show_left_toolbar = !self.show_left_toolbar;
                         self.apply_toolbar_visibility(ui, ctx);
@@ -1443,6 +3046,7 @@ impl TheTrait for Editor {
                             ctx,
                             TheValue::Bool(self.show_left_toolbar),
                         );
+                        workspace_prefs_dirty = true;
                     } else if item_id.name == "MenuView::ToggleRight" {
                         self.show_right_toolbar = !self.show_right_toolbar;
                         self.apply_toolbar_visibility(ui, ctx);
@@ -1451,18 +3055,22 @@ impl TheTrait for Editor {
                             ctx,
                             TheValue::Bool(self.show_right_toolbar),
                         );
+                        workspace_prefs_dirty = true;
                     } else if item_id.name == "MenuTheme::Dark" {
                         self.theme_preset = "Dark".to_string();
                         self.apply_theme_preset(ui, ctx);
                         ui.set_widget_value("ThemePresetDropdown", ctx, TheValue::Int(0));
+                        workspace_prefs_dirty = true;
                     } else if item_id.name == "MenuTheme::Light" {
                         self.theme_preset = "Light".to_string();
                         self.apply_theme_preset(ui, ctx);
                         ui.set_widget_value("ThemePresetDropdown", ctx, TheValue::Int(1));
+                        workspace_prefs_dirty = true;
                     } else if item_id.name == "MenuTheme::Slate" {
                         self.theme_preset = "Slate".to_string();
                         self.apply_theme_preset(ui, ctx);
                         ui.set_widget_value("ThemePresetDropdown", ctx, TheValue::Int(2));
+                        workspace_prefs_dirty = true;
                     } else if item_id.name == "MenuOption::Snap" {
                         self.option_snap_to_grid = !self.option_snap_to_grid;
                         self.server_ctx.snap_to_grid = self.option_snap_to_grid;
@@ -1471,6 +3079,7 @@ impl TheTrait for Editor {
                             ctx,
                             TheValue::Bool(self.option_snap_to_grid),
                         );
+                        workspace_prefs_dirty = true;
                     } else if item_id.name == "MenuOption::Grid" {
                         self.option_show_grid = !self.option_show_grid;
                         ui.set_widget_value(
@@ -1478,6 +3087,7 @@ impl TheTrait for Editor {
                             ctx,
                             TheValue::Bool(self.option_show_grid),
                         );
+                        workspace_prefs_dirty = true;
                     } else if item_id.name == "MenuOption::Gizmos" {
                         self.option_show_gizmos = !self.option_show_gizmos;
                         self.server_ctx.show_editing_geometry = self.option_show_gizmos;
@@ -1486,6 +3096,23 @@ impl TheTrait for Editor {
                             ctx,
                             TheValue::Bool(self.option_show_gizmos),
                         );
+                        workspace_prefs_dirty = true;
+                    } else if item_id.name == "MenuIde::LayoutUnreal" {
+                        self.apply_ide_layout_unreal(ui, ctx);
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Applied Unreal-like IDE layout preset.".to_string(),
+                        ));
+                        workspace_prefs_dirty = true;
+                    } else if item_id.name == "MenuIde::LayoutMinimal" {
+                        self.apply_ide_layout_minimal(ui, ctx);
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Applied minimal IDE layout preset.".to_string(),
+                        ));
+                        workspace_prefs_dirty = true;
+                    } else if item_id.name == "MenuIde::FeatureMatrix" {
+                        self.show_ide_feature_matrix_dialog(ui, ctx);
                     } else if item_id.name == "MenuHelp::Docs" {
                         self.show_help_dialog(ui, ctx);
                     } else if item_id.name == "MenuHelp::Examples" {
@@ -1570,7 +3197,7 @@ impl TheTrait for Editor {
                 }
                 TheEvent::Custom(id, value) => {
                     if id.name == "Show Help" {
-                        if let TheValue::Text(url) = value {
+                        if let TheValue::Text(ref url) = value {
                             _ = open::that(format!("https://www.eldiron.com/{}", url));
                             ctx.ui
                                 .set_widget_state("Help".to_string(), TheWidgetState::None);
@@ -1581,6 +3208,14 @@ impl TheTrait for Editor {
                     }
                     if id.name == "Set Project Undo State" {
                         UNDOMANAGER.read().unwrap().set_undo_state_to_ui(ctx);
+                    } else if id.name == "Rebuild Left Toolbar" {
+                        self.rebuild_left_tool_name_layout(ui, ctx);
+                        self.persist_workspace_settings_to_project_config();
+                        redraw = true;
+                    } else if id.name == "Set Tool" {
+                        if let TheValue::Text(ref tool_name) = value {
+                            self.set_left_toolbar_active_tool(ctx, tool_name);
+                        }
                     } else if id.name == "Render SceneManager Map" {
                         if self.server_ctx.pc.is_region() {
                             if self.server_ctx.editor_view_mode == EditorViewMode::D2
@@ -2037,6 +3672,36 @@ impl TheTrait for Editor {
                             let undo = PaletteUndoAtom::Edit(prev, self.project.palette.clone());
                             UNDOMANAGER.write().unwrap().add_palette_undo(undo, ctx);
                         }
+                    } else if id.name == "ExportTownJson" {
+                        if let Some(generated) = &self.last_generated_town {
+                            let payload = serde_json::to_string_pretty(generated)
+                                .unwrap_or_else(|_| "{}".to_string());
+                            for p in paths {
+                                let _ = std::fs::write(&p, &payload);
+                            }
+                            ctx.ui.send(TheEvent::SetStatusText(
+                                TheId::empty(),
+                                "Town data exported.".to_string(),
+                            ));
+                        } else {
+                            ctx.ui.send(TheEvent::SetStatusText(
+                                TheId::empty(),
+                                "No generated town data to export.".to_string(),
+                            ));
+                        }
+                    } else if id.name == "ImportTownJson" {
+                        for p in paths {
+                            if let Ok(text) = std::fs::read_to_string(&p)
+                                && let Ok(data) =
+                                    serde_json::from_str::<crate::game_logic::TownMapData>(&text)
+                            {
+                                self.last_generated_town = Some(data);
+                                ctx.ui.send(TheEvent::SetStatusText(
+                                    TheId::empty(),
+                                    "Town data imported.".to_string(),
+                                ));
+                            }
+                        }
                     } else if id.name == "Export2DPackage" || id.name == "Export3DPackage" {
                         let export_kind = if id.name == "Export3DPackage" { "3D" } else { "2D" };
                         for p in paths {
@@ -2234,6 +3899,9 @@ impl TheTrait for Editor {
                                         self.server_ctx.curr_region = first.id;
                                     }
 
+                                    self.load_workspace_settings_from_project_config();
+                                    self.apply_workspace_settings_to_ui(ui, ctx);
+
                                     self.sidebar.load_from_project(
                                         ui,
                                         ctx,
@@ -2283,14 +3951,113 @@ impl TheTrait for Editor {
                     let is_direct_action =
                         state == TheWidgetState::Clicked || state == TheWidgetState::Selected;
                     if is_direct_action {
-                        if let Some(tool_name) = id
+                        if id.name == "TownGenerateBtn" {
+                            let seed = if self.towngen_last_seed == 0 {
+                                std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .map(|d| d.as_secs())
+                                    .unwrap_or(1)
+                            } else {
+                                self.towngen_last_seed
+                            };
+                            self.generate_town_system_data_with_seed(ui, ctx, seed);
+                            redraw = true;
+                        } else if id.name == "TownRegenerateBtn" {
+                            let seed = if self.towngen_last_seed == 0 {
+                                std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .map(|d| d.as_secs())
+                                    .unwrap_or(1)
+                            } else {
+                                self.towngen_last_seed
+                            };
+                            self.generate_town_system_data_with_seed(ui, ctx, seed);
+                            redraw = true;
+                        } else if id.name == "TownBakeBtn" {
+                            self.bake_generated_town_to_current_map(ui, ctx);
+                            redraw = true;
+                        } else if id.name == "TownExportBtn" {
+                            ctx.ui.save_file_requester(
+                                TheId::named_with_id("ExportTownJson", Uuid::new_v4()),
+                                "Export Town Data".into(),
+                                TheFileExtension::new("JSON".into(), vec!["json".to_string()]),
+                            );
+                        } else if id.name == "TownImportBtn" {
+                            ctx.ui.open_file_requester(
+                                TheId::named_with_id("ImportTownJson", Uuid::new_v4()),
+                                "Import Town Data".into(),
+                                TheFileExtension::new("JSON".into(), vec!["json".to_string()]),
+                            );
+                        } else if id.name == "TownAutoQuestBtn" {
+                            let n = self.generate_quests_from_last_town();
+                            ctx.ui.send(TheEvent::SetStatusText(
+                                TheId::empty(),
+                                format!("Generated {} MMO quests from town districts.", n),
+                            ));
+                        } else if id.name == "TownSpawnPoiBtn" {
+                            let n = self.spawn_pois_from_last_town();
+                            ctx.ui.send(TheEvent::SetStatusText(
+                                TheId::empty(),
+                                format!("Spawned {} town POI NPCs/entities.", n),
+                            ));
+                            redraw = true;
+                        } else if id.name == "MmorpgSimTickBtn" {
+                            let msg = self.run_mmorpg_sim_tick();
+                            ctx.ui.send(TheEvent::SetStatusText(TheId::empty(), msg));
+                        } else if id.name == "MmorpgSimCombatBtn" {
+                            let msg = self.run_mmorpg_sim_combat();
+                            ctx.ui.send(TheEvent::SetStatusText(TheId::empty(), msg));
+                        } else if id.name == "MmorpgSimLootBtn" {
+                            let msg = self.run_mmorpg_sim_loot();
+                            ctx.ui.send(TheEvent::SetStatusText(TheId::empty(), msg));
+                        } else if id.name == "LeftGroupAction::ExpandAll" {
+                            self.left_group_modes_expanded = true;
+                            self.left_group_2d_expanded = true;
+                            self.left_group_3d_expanded = true;
+                            self.left_group_editor_expanded = true;
+                            self.rebuild_left_tool_name_layout(ui, ctx);
+                            workspace_prefs_dirty = true;
+                            redraw = true;
+                        } else if id.name == "LeftGroupAction::CollapseAll" {
+                            self.left_group_modes_expanded = false;
+                            self.left_group_2d_expanded = false;
+                            self.left_group_3d_expanded = false;
+                            self.left_group_editor_expanded = false;
+                            self.rebuild_left_tool_name_layout(ui, ctx);
+                            workspace_prefs_dirty = true;
+                            redraw = true;
+                        } else if let Some(group) = id.name.strip_prefix("LeftGroupToggle::") {
+                            match group {
+                                "Modes" => {
+                                    self.left_group_modes_expanded = !self.left_group_modes_expanded
+                                }
+                                "2D" => self.left_group_2d_expanded = !self.left_group_2d_expanded,
+                                "3D" => self.left_group_3d_expanded = !self.left_group_3d_expanded,
+                                "Editor" => {
+                                    self.left_group_editor_expanded =
+                                        !self.left_group_editor_expanded
+                                }
+                                _ => {}
+                            }
+                            self.rebuild_left_tool_name_layout(ui, ctx);
+                            workspace_prefs_dirty = true;
+                            redraw = true;
+                        } else if let Some(tool_name) = id
                             .name
                             .strip_prefix("TopTool::")
+                            .or_else(|| id.name.strip_prefix("LeftTool::"))
+                            .or_else(|| id.name.strip_prefix("LeftMode::"))
                             .or_else(|| id.name.strip_prefix("RightTool::"))
                         {
                             ctx.ui.send(TheEvent::Custom(
                                 TheId::named("Set Tool"),
                                 TheValue::Text(tool_name.to_string()),
+                            ));
+                            redraw = true;
+                        } else if let Some(menu_id) = id.name.strip_prefix("LeftAction::") {
+                            ctx.ui.send(TheEvent::ContextMenuSelected(
+                                TheId::named("LeftToolbarAction"),
+                                TheId::named(menu_id),
                             ));
                             redraw = true;
                         } else if id.name == "QuickGuiOpen" {
@@ -2315,6 +4082,30 @@ impl TheTrait for Editor {
                             ctx.ui.send(TheEvent::StateChanged(
                                 TheId::named("Redo"),
                                 TheWidgetState::Clicked,
+                            ));
+                            redraw = true;
+                        } else if id.name == "Undo" {
+                            UNDOMANAGER.write().unwrap().undo(
+                                &mut self.server_ctx,
+                                &mut self.project,
+                                ui,
+                                ctx,
+                            );
+                            ctx.ui.send(TheEvent::SetStatusText(
+                                TheId::empty(),
+                                "Undo command applied.".to_string(),
+                            ));
+                            redraw = true;
+                        } else if id.name == "Redo" {
+                            UNDOMANAGER.write().unwrap().redo(
+                                &mut self.server_ctx,
+                                &mut self.project,
+                                ui,
+                                ctx,
+                            );
+                            ctx.ui.send(TheEvent::SetStatusText(
+                                TheId::empty(),
+                                "Redo command applied.".to_string(),
                             ));
                             redraw = true;
                         } else if id.name == "QuickGuiPlay" {
@@ -2345,16 +4136,19 @@ impl TheTrait for Editor {
                             self.theme_preset = "Dark".to_string();
                             self.apply_theme_preset(ui, ctx);
                             ui.set_widget_value("ThemePresetDropdown", ctx, TheValue::Int(0));
+                            workspace_prefs_dirty = true;
                             redraw = true;
                         } else if id.name == "QuickThemeLight" {
                             self.theme_preset = "Light".to_string();
                             self.apply_theme_preset(ui, ctx);
                             ui.set_widget_value("ThemePresetDropdown", ctx, TheValue::Int(1));
+                            workspace_prefs_dirty = true;
                             redraw = true;
                         } else if id.name == "QuickThemeSlate" {
                             self.theme_preset = "Slate".to_string();
                             self.apply_theme_preset(ui, ctx);
                             ui.set_widget_value("ThemePresetDropdown", ctx, TheValue::Int(2));
+                            workspace_prefs_dirty = true;
                             redraw = true;
                         } else if id.name == "QuickOptSnap" {
                             self.option_snap_to_grid = !self.option_snap_to_grid;
@@ -2364,6 +4158,7 @@ impl TheTrait for Editor {
                                 ctx,
                                 TheValue::Bool(self.option_snap_to_grid),
                             );
+                            workspace_prefs_dirty = true;
                             redraw = true;
                         } else if id.name == "QuickOptGrid" {
                             self.option_show_grid = !self.option_show_grid;
@@ -2372,6 +4167,7 @@ impl TheTrait for Editor {
                                 ctx,
                                 TheValue::Bool(self.option_show_grid),
                             );
+                            workspace_prefs_dirty = true;
                             redraw = true;
                         } else if id.name == "QuickOptGizmos" {
                             self.option_show_gizmos = !self.option_show_gizmos;
@@ -2381,6 +4177,7 @@ impl TheTrait for Editor {
                                 ctx,
                                 TheValue::Bool(self.option_show_gizmos),
                             );
+                            workspace_prefs_dirty = true;
                             redraw = true;
                         }
                     }
@@ -2738,6 +4535,15 @@ impl TheTrait for Editor {
                             _ => "Dark".to_string(),
                         };
                         self.apply_theme_preset(ui, ctx);
+                        workspace_prefs_dirty = true;
+                    } else if id.name == "TownPresetDropdown" {
+                        self.towngen_preset = match index {
+                            0 => "Small Town".to_string(),
+                            1 => "Large Town".to_string(),
+                            3 => "Large City".to_string(),
+                            _ => "Small City".to_string(),
+                        };
+                        workspace_prefs_dirty = true;
                     }
                 }
                 TheEvent::ValueChanged(id, value) => {
@@ -2757,25 +4563,30 @@ impl TheTrait for Editor {
                         if let TheValue::Bool(v) = value {
                             self.option_snap_to_grid = v;
                             self.server_ctx.snap_to_grid = v;
+                            workspace_prefs_dirty = true;
                         }
                     } else if id.name == "OptionGridCB" {
                         if let TheValue::Bool(v) = value {
                             self.option_show_grid = v;
+                            workspace_prefs_dirty = true;
                         }
                     } else if id.name == "OptionGizmoCB" {
                         if let TheValue::Bool(v) = value {
                             self.option_show_gizmos = v;
                             self.server_ctx.show_editing_geometry = v;
+                            workspace_prefs_dirty = true;
                         }
                     } else if id.name == "OptionLeftToolbarCB" {
                         if let TheValue::Bool(v) = value {
                             self.show_left_toolbar = v;
                             self.apply_toolbar_visibility(ui, ctx);
+                            workspace_prefs_dirty = true;
                         }
                     } else if id.name == "OptionRightToolbarCB" {
                         if let TheValue::Bool(v) = value {
                             self.show_right_toolbar = v;
                             self.apply_toolbar_visibility(ui, ctx);
+                            workspace_prefs_dirty = true;
                         }
                     } else if id.name == "OptionTargetFpsEdit" {
                         if let Some(v) = value.to_i32() {
@@ -2789,10 +4600,67 @@ impl TheTrait for Editor {
                         if let Some(v) = value.to_i32() {
                             CONFIGEDITOR.write().unwrap().grid_size = v.clamp(4, 256);
                         }
+                    } else if id.name == "TownSeedEdit" {
+                        if let Some(v) = value.to_i32() {
+                            self.towngen_last_seed = v.max(1) as u64;
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "TownRiverCB" {
+                        if let TheValue::Bool(v) = value {
+                            self.towngen_has_river = v;
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "TownWallsCB" {
+                        if let TheValue::Bool(v) = value {
+                            self.towngen_has_walls = v;
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "TownAutoBakeCB" {
+                        if let TheValue::Bool(v) = value {
+                            self.towngen_auto_bake = v;
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "OverlayTownDistrictsCB" {
+                        if let TheValue::Bool(v) = value {
+                            self.overlay_show_town_districts = v;
+                            self.apply_town_overlay_visibility();
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "OverlayTownRoadsCB" {
+                        if let TheValue::Bool(v) = value {
+                            self.overlay_show_town_roads = v;
+                            self.apply_town_overlay_visibility();
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "OverlayTownLandmarksCB" {
+                        if let TheValue::Bool(v) = value {
+                            self.overlay_show_town_landmarks = v;
+                            self.apply_town_overlay_visibility();
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "MmorpgXpRateEdit" {
+                        if let Some(v) = value.to_f32() {
+                            self.mmorpg_xp_rate = v.clamp(0.1, 5.0);
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "MmorpgLootRateEdit" {
+                        if let Some(v) = value.to_f32() {
+                            self.mmorpg_loot_rate = v.clamp(0.1, 5.0);
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "MmorpgEventRateEdit" {
+                        if let Some(v) = value.to_f32() {
+                            self.mmorpg_event_rate = v.clamp(0.1, 5.0);
+                            workspace_prefs_dirty = true;
+                        }
                     }
                 }
                 _ => {}
             }
+        }
+
+        if workspace_prefs_dirty {
+            self.persist_workspace_settings_to_project_config();
         }
 
         #[cfg(all(not(target_arch = "wasm32"), feature = "self-update"))]

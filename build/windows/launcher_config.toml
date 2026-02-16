@@ -13,4 +13,12 @@ logo = "../../enchantment_engine_branding_pack/launcher/launcher_icon_1024.png"
 loading_bar_color = "#FFD740"
 loading_bar_background = "#222222"
 
+
+# Main engine executable
+engine_exe = "../enchantmen-creator.exe"
+
+# Window and installer titles
+window_title = "Enchantment Engine Launcher"
+installer_title = "Enchantment Engine Installer"
+
 # Additional settings can be added here
