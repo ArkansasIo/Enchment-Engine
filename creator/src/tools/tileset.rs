@@ -34,7 +34,7 @@ impl Tool for TilesetTool {
         ui: &mut TheUI,
         ctx: &mut TheContext,
         _project: &mut Project,
-        server_ctx: &mut ServerContext,
+        _server_ctx: &mut ServerContext,
     ) -> bool {
         if let Activate = tool_event {
             if let Some(layout) = ui.get_sharedvlayout("Shared VLayout") {
@@ -44,14 +44,13 @@ impl Tool for TilesetTool {
                 TheId::named("Set Tilemap Panel"),
                 TheValue::Empty,
             ));
-
-            server_ctx.tile_preview_mode = true;
+            // server_ctx.tile_preview_mode = true; // Field does not exist in ServerContext
             return true;
         } else if let DeActivate = tool_event {
             if let Some(layout) = ui.get_sharedvlayout("Shared VLayout") {
                 layout.set_mode(TheSharedVLayoutMode::Shared);
             }
-            server_ctx.tile_preview_mode = false;
+            // server_ctx.tile_preview_mode = false; // Field does not exist in ServerContext
             ctx.ui.send(TheEvent::Custom(
                 TheId::named("Soft Update Minimap"),
                 TheValue::Empty,

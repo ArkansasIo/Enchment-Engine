@@ -4,8 +4,8 @@ cargo install enchentment_engine-creator
 cargo install enchentment_engine-client
 # (This project
 supports **2D** (Ultima-style), **isometric** (Diablo-style), and **first-person** (Dungeon Master/Eye of the Beholder-style) RPG creation
-**Enchentment Engine** (formerly Eldiron Creator) is a cross-platform engine for classic retro role-playing games (RPGs). Its primary goal is to enable the creation of RPGs reminiscent of the 1980s and 1990s while incorporating modern features such as multiplayer support, procedural content generation, and more.
-Enchentment Engine natively supports **2D** (Ultima-style), **isometric** (Diablo-style), and **first-person** (Dungeon Master/Eye of the Beholder-style) RPGs, allowing developers to craft a variety of experiences effortlessly.
+**Enchentment Engine**  is a cross-platform engine for classic retro role-playing games (RPGs). Its primary goal is to enable the creation of RPGs reminiscent of the 1980s and 1990s while incorporating modern features such as multiplayer support, procedural content generation, and more.
+Enchentment Engine natively supports **2D** (Ultima-style), **isometric** (Diablo-style), and **first-person** MMROPG, RPGs, allowing developers to craft a variety of experiences effortlessly.
 Enchentment Engine is built on three embedded crates that I have developed over the last years. Each focuses on a specific aspect of the engine and editor, and together they form the foundation of the Enchentment Engine ecosystem.
 Handles cross-platform window creation, user event abstraction, and the custom UI system used by *Enchentment Engine*.
 Started as a software rasterizer for 2D and 3D geometry, but has since evolved into the core game engine. While *SceneVM* now handles most rendering tasks, the software rasterization aspect of Rusterix is still used for example in in-game UI elements.

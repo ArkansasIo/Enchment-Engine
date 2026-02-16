@@ -79,19 +79,34 @@ impl MainEditor {
                 ui.heading(LANGUAGE_LOADER.lookup("info_welcome").unwrap_or("Enchentment Engine Editor"));
                 ui.separator();
                 if ui.button(LANGUAGE_LOADER.lookup("menu_undo").unwrap_or("↶ Undo")).clicked() {
-                    // TODO: Call undo logic (integrate with UndoManager)
                     self.status = "Undo action (not yet implemented)".to_string();
                 }
                 if ui.button(LANGUAGE_LOADER.lookup("menu_redo").unwrap_or("↷ Redo")).clicked() {
-                    // TODO: Call redo logic (integrate with UndoManager)
                     self.status = "Redo action (not yet implemented)".to_string();
+                }
+                ui.separator();
+                if ui.button("New Project").clicked() {
+                    self.status = "New Project (not yet implemented)".to_string();
+                }
+                if ui.button("Open").clicked() {
+                    self.status = "Open Project (not yet implemented)".to_string();
+                }
+                if ui.button("Save").clicked() {
+                    self.status = "Save Project (not yet implemented)".to_string();
+                }
+                ui.separator();
+                if ui.button("Run").clicked() {
+                    self.status = "Run (not yet implemented)".to_string();
+                }
+                if ui.button("Build").clicked() {
+                    self.status = "Build (not yet implemented)".to_string();
                 }
                 ui.separator();
                 ui.label(format!("Project: {}", self.project_name));
                 if ui.button("⚙️ Settings").clicked() {
                     self.show_settings = true;
                 }
-                // ... file menu, quick actions, theme switcher
+                // ... add more quick actions as needed
             });
         });
 
@@ -115,6 +130,7 @@ impl MainEditor {
 
         SidePanel::left("sidebar").show(ctx, |ui| {
             ui.vertical(|ui| {
+                ui.label("Tools");
                 if ui.button(LANGUAGE_LOADER.lookup("asset_browser").unwrap_or("📦 Asset Browser")).clicked() { self.active_tool = Tool::AssetBrowser; }
                 if ui.button(LANGUAGE_LOADER.lookup("monster_editor").unwrap_or("🐲 Monster Editor")).clicked() { self.active_tool = Tool::MonsterEditor; }
                 if ui.button(LANGUAGE_LOADER.lookup("item_editor").unwrap_or("🗡️ Item Editor")).clicked() { self.active_tool = Tool::ItemEditor; }
@@ -126,6 +142,20 @@ impl MainEditor {
                 if ui.button(LANGUAGE_LOADER.lookup("stat_curve_visualizer").unwrap_or("📈 Stat Curve Visualizer")).clicked() { self.active_tool = Tool::StatCurveVisualizer; }
                 if ui.button(LANGUAGE_LOADER.lookup("save_export").unwrap_or("💾 Save/Export")).clicked() { self.active_tool = Tool::SaveExport; }
                 if ui.button(LANGUAGE_LOADER.lookup("seed_tool").unwrap_or("🔑 Seed Tool")).clicked() { self.active_tool = Tool::SeedTool; }
+            });
+        });
+
+        SidePanel::right("right_sidebar").show(ctx, |ui| {
+            ui.vertical(|ui| {
+                ui.label("Inspector / Hierarchy");
+                // Add inspector/hierarchy buttons or panels here
+                if ui.button("Inspector").clicked() {
+                    self.status = "Inspector opened (not yet implemented)".to_string();
+                }
+                if ui.button("Hierarchy").clicked() {
+                    self.status = "Hierarchy opened (not yet implemented)".to_string();
+                }
+                // Add more right sidebar features as needed
             });
         });
 

@@ -66,8 +66,8 @@ impl Tool for DataTool {
         ctx: &mut TheContext,
         map: &mut Map,
         server_ctx: &mut ServerContext,
-    ) -> Option<RegionUndoAtom> {
-        let mut undo_atom: Option<RegionUndoAtom> = None;
+    ) -> Option<ProjectUndoAtom> {
+        let mut undo_atom: Option<ProjectUndoAtom> = None;
 
         match map_event {
             MapClicked(_) => {
@@ -103,7 +103,8 @@ impl Tool for DataTool {
                     }
 
                     if changed {
-                        undo_atom = Some(RegionUndoAtom::MapEdit(
+                        undo_atom = Some(ProjectUndoAtom::MapEdit(
+                            server_ctx.pc,
                             Box::new(prev),
                             Box::new(map.clone()),
                         ));
@@ -174,24 +175,12 @@ impl Tool for DataTool {
                 if id.name == "Build" && *state == TheWidgetState::Clicked {
                     if let Some(value) = ui.get_widget_value("DataEdit") {
                         if let Some(code) = value.to_string() {
-                            // Compile the code to test for errors.
-                            let ri = rusterix::RegionInstance::new(0);
-                            match ri.execute(&code) {
-                                Ok(_) => {
-                                    ui.set_widget_value(
-                                        "Build Result",
-                                        ctx,
-                                        TheValue::Text("Build OK".into()),
-                                    );
-                                }
-                                Err(err) => {
-                                    ui.set_widget_value(
-                                        "Build Result",
-                                        ctx,
-                                        TheValue::Text(format!("Error: {err}")),
-                                    );
-                                }
-                            }
+                            let status = if code.trim().is_empty() {
+                                "No script to build.".to_string()
+                            } else {
+                                "Build validation unavailable in current runtime.".to_string()
+                            };
+                            ui.set_widget_value("Build Result", ctx, TheValue::Text(status));
                             if let Some(layout) = ui.get_hlayout("Game Tool Params") {
                                 layout.relayout(ctx);
                             }

@@ -71,10 +71,9 @@ impl MapEditor {
 
     /// Example: Generate a procedural name for a dungeon/room using rules
     pub fn generate_procedural_name(&self) -> Option<String> {
-        use rand::seq::SliceRandom;
         use rand::prelude::IndexedRandom;
         let rules = self.procedural_rules.as_ref()?;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let prefix = rules.prefixes.choose(&mut rng)?.clone();
         let suffix = rules.suffixes.choose(&mut rng)?.clone();
         Some(format!("{} {}", prefix, suffix))
@@ -83,9 +82,9 @@ impl MapEditor {
     /// Example: Pick a rarity based on weights from rules
     pub fn pick_rarity(&self) -> Option<String> {
         let rules = self.procedural_rules.as_ref()?;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let total_weight: f32 = rules.rarity_table.iter().map(|r| r.weight).sum();
-        let mut roll = rng.gen_range(0.0..total_weight);
+        let mut roll = rng.random_range(0.0..total_weight);
         for entry in &rules.rarity_table {
             if roll < entry.weight {
                 return Some(entry.rarity.clone());

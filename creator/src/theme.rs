@@ -1,5 +1,4 @@
 use egui::{Color32, FontId, Ui, ComboBox, Context};
-use rand::Rng;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Theme {

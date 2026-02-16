@@ -111,7 +111,7 @@ impl RenderEditor {
         _ctx: &mut TheContext,
         _map: &mut Map,
         _server_ctx: &mut ServerContext,
-    ) -> Option<RegionUndoAtom> {
+    ) -> Option<ProjectUndoAtom> {
         match &map_event {
             MapEvent::MapClicked(coord) => {
                 self.drag_coord = *coord;

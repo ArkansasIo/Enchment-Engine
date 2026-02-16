@@ -94,15 +94,18 @@ pub struct Editor {
 
     build_values: ValueContainer,
 
-    // Theme and layout system
-    theme_settings: crate::theme::ThemeSettings,
-
     // Title page and state
     show_title_page: bool,
-    show_settings: bool,
-    show_options: bool,
-    show_game_test: bool,
+
+    // Workspace options / theme
+    show_left_toolbar: bool,
+    show_right_toolbar: bool,
+    option_snap_to_grid: bool,
+    option_show_grid: bool,
+    option_show_gizmos: bool,
+    theme_preset: String,
 }
+
 
 impl Editor {
     fn is_realtime_mode(&self) -> bool {
@@ -118,9 +121,56 @@ impl Editor {
             config.game_tick_ms.max(1) as u64
         }
     }
+
+    fn apply_toolbar_visibility(&self, ui: &mut TheUI, ctx: &mut TheContext) {
+        if let Some(left_layout) = ui.get_layout("Tool List Layout") {
+            left_layout
+                .limiter_mut()
+                .set_max_width(if self.show_left_toolbar { 51 } else { 0 });
+            left_layout.relayout(ctx);
+        }
+        if let Some(right_layout) = ui.get_layout("Right Tool Layout") {
+            right_layout
+                .limiter_mut()
+                .set_max_width(if self.show_right_toolbar { 51 } else { 0 });
+            right_layout.relayout(ctx);
+        }
+    }
+
+    fn apply_theme_preset(&self, ui: &mut TheUI, ctx: &mut TheContext) {
+        let top_color = match self.theme_preset.as_str() {
+            "Light" => Some(TheThemeColors::TextLayoutBackground),
+            "Slate" => Some(TheThemeColors::DefaultWidgetDarkBackground),
+            _ => None,
+        };
+        let side_color = match self.theme_preset.as_str() {
+            "Light" => Some(TheThemeColors::TextLayoutBackground),
+            "Slate" => Some(TheThemeColors::DefaultWidgetDarkBackground),
+            _ => Some(TheThemeColors::ListLayoutBackground),
+        };
+
+        if let Some(layout) = ui.get_hlayout("Menu Layout") {
+            layout.set_background_color(top_color);
+            layout.relayout(ctx);
+        }
+        if let Some(layout) = ui.get_hlayout("Top Quick Tool Layout") {
+            layout.set_background_color(top_color);
+            layout.relayout(ctx);
+        }
+        if let Some(layout) = ui.get_layout("Tool List Layout") {
+            layout.set_background_color(side_color);
+            layout.relayout(ctx);
+        }
+        if let Some(layout) = ui.get_layout("Right Tool Layout") {
+            layout.set_background_color(side_color);
+            layout.relayout(ctx);
+        }
+    }
+
 }
 
 impl TheTrait for Editor {
+
     fn new() -> Self
     where
         Self: Sized,
@@ -152,32 +202,26 @@ impl TheTrait for Editor {
         Self {
             project,
             project_path: None,
-
             sidebar: Sidebar::new(),
             mapeditor: MapEditor::new(),
-
             server_ctx: ServerContext::default(),
-
             update_tracker: UpdateTracker::new(),
             event_receiver: None,
-
             #[cfg(all(not(target_arch = "wasm32"), feature = "self-update"))]
             self_update_rx,
             #[cfg(all(not(target_arch = "wasm32"), feature = "self-update"))]
             self_update_tx,
             #[cfg(all(not(target_arch = "wasm32"), feature = "self-update"))]
             self_updater: Arc::new(Mutex::new(self_updater)),
-
             update_counter: 0,
-
             build_values: ValueContainer::default(),
-
-            theme_settings: crate::theme::ThemeSettings::new(),
-
             show_title_page: true,
-            show_settings: false,
-            show_options: false,
-            show_game_test: false,
+            show_left_toolbar: true,
+            show_right_toolbar: true,
+            option_snap_to_grid: true,
+            option_show_grid: true,
+            option_show_gizmos: true,
+            theme_preset: "Dark".to_string(),
         }
     }
 
@@ -238,227 +282,16 @@ impl TheTrait for Editor {
     }
 
     fn init_ui(&mut self, ui: &mut TheUI, ctx: &mut TheContext) {
+
         // Show dev title page if enabled
         if self.show_title_page {
-            // --- TITLE SCREEN CONCEPT ---
-            let mut title_canvas = TheCanvas::new();
             let mut vlayout = TheVLayout::new(TheId::named("TitlePageVLayout"));
             vlayout.set_margin(Vec4::new(40, 40, 40, 40));
             vlayout.set_padding(30);
-
-            // Logo/Title
-            let mut logo = TheText::new(TheId::named("LogoText"));
-            logo.set_text("Enchantmen Engine".to_string());
-            logo.set_text_size(56.0);
-            logo.set_text_color([255, 215, 64, 255]); // Gold
-            vlayout.add_widget(Box::new(logo));
-
-            let mut subtitle = TheText::new(TheId::named("SubtitleText"));
-            subtitle.set_text("AAA Fantasy MMORPG Toolkit".to_string());
-            subtitle.set_text_size(24.0);
-            subtitle.set_text_color([120, 200, 255, 255]); // Luminous blue
-            vlayout.add_widget(Box::new(subtitle));
-
-            // (Placeholder) Iconography and background art would be drawn here by a custom widget or image
-            let mut art = TheText::new(TheId::named("ArtHint"));
-            art.set_text("[Art: Floating islands, citadel, dragon silhouettes, aurora, spellbook, crystals, knight/mage silhouette]".to_string());
-            art.set_text_size(16.0);
-            art.set_text_color([180, 180, 200, 255]);
-            vlayout.add_widget(Box::new(art));
-
-            // Menu Buttons (bottom center)
-            // Flatten menu buttons directly into the vertical layout
-            let mut start_btn = TheTraybarButton::new(TheId::named("StartGameEngine"));
-            start_btn.set_text("▶ START".to_string());
-            vlayout.add_widget(Box::new(start_btn));
-
-            let mut settings_btn = TheTraybarButton::new(TheId::named("Settings"));
-            settings_btn.set_text("⚙ SETTINGS".to_string());
-            vlayout.add_widget(Box::new(settings_btn));
-
-            let mut exit_btn = TheTraybarButton::new(TheId::named("Exit"));
-            exit_btn.set_text("❌ EXIT".to_string());
-            vlayout.add_widget(Box::new(exit_btn));
-
-            // Optional: Server Select, Continue, Credits, Engine Tools
-            let mut dev_btn = TheTraybarButton::new(TheId::named("EngineTools"));
-            dev_btn.set_text("Engine Tools".to_string());
-            vlayout.add_widget(Box::new(dev_btn));
-
-            title_canvas.set_layout(vlayout);
-            ui.canvas.set_center(title_canvas);
-
-            // Handle button events using the public event processing API
-            ui.process_events(ctx);
-            // If your framework provides a public way to get the last event, handle it here
-            // Otherwise, event handling may need to be moved elsewhere (e.g., via callback or polling)
-            // For now, this is a placeholder for event handling logic
-        }
-        // Show settings/options/game test dialogs if needed
-            if self.show_settings {
-                // --- Modular Theme/Layout Settings Integration ---
-                // Use egui for theme/layout settings if available, or adapt to your UI system
-                #[cfg(feature = "egui")] // If using egui
-                egui::Window::new("Theme & Layout Settings").show(ctx.egui_ctx(), |ui| {
-                    self.theme_settings.show_theme_settings(ui);
-                    self.theme_settings.show_layout_settings(ui);
-                });
-                #[cfg(not(feature = "egui"))]
-                {
-                    let mut settings_canvas = TheCanvas::new();
-                    let mut vlayout = TheVLayout::new(TheId::named("SettingsVLayout"));
-                    vlayout.set_margin(Vec4::new(20, 20, 20, 20));
-                    let mut label = TheText::new(TheId::named("SettingsLabel"));
-                    label.set_text("Settings".to_string());
-                    vlayout.add_widget(Box::new(label));
-                    // Theme/skin/layout options (custom widget or dropdowns)
-                    // Example: call a method to add theme/layout widgets to vlayout
-                    // self.theme_settings.add_to_vlayout(&mut vlayout);
-                    let mut close_btn = TheTraybarButton::new(TheId::named("CloseSettings"));
-                    close_btn.set_text("Close".to_string());
-                    vlayout.add_widget(Box::new(close_btn));
-                    settings_canvas.set_layout(vlayout);
-                    ui.show_dialog("Settings", settings_canvas, vec![TheDialogButtonRole::Accept], ctx);
-                    ui.process_events(ctx);
-                }
-                return;
-            }
-        RUSTERIX.write().unwrap().client.messages_font = ctx.ui.font.clone();
-
-        // Embedded Icons
-        for file in Embedded::iter() {
-            let name = file.as_ref();
-
-            if name.ends_with(".png") {
-                if let Some(file) = Embedded::get(name) {
-                    let data = std::io::Cursor::new(file.data);
-
-                    let decoder = png::Decoder::new(data);
-                    if let Ok(mut reader) = decoder.read_info() {
-                        if let Some(buffer_size) = reader.output_buffer_size() {
-                            let mut buf = vec![0; buffer_size];
-                            let info = reader.next_frame(&mut buf).unwrap();
-                            let bytes = &buf[..info.buffer_size()];
-
-                            let mut cut_name = name.replace("icons/", "");
-                            cut_name = cut_name.replace(".png", "");
-
-                            ctx.ui.add_icon(
-                                cut_name.to_string(),
-                                TheRGBABuffer::from(bytes.to_vec(), info.width, info.height),
-                            );
-                        }
-                    }
-                }
-            }
+            // ...existing code...
         }
 
-        // ---
-
-        ui.set_statusbar_name("Statusbar".to_string());
-
-        let mut top_canvas = TheCanvas::new();
-        // Internal file/edit/game menu is hidden for the Xcode staticlib wrapper
-        // where native menu handling is expected.
-        #[cfg(not(feature = "staticlib"))]
-        {
-            let mut menu_canvas = TheCanvas::new();
-            let mut menu = TheMenu::new(TheId::named("Menu"));
-
-            let mut file_menu = TheContextMenu::named(fl!("menu_file"));
-            file_menu.add(TheContextMenuItem::new(
-                fl!("menu_new"),
-                TheId::named("New"),
-            ));
-            file_menu.add_separator();
-            file_menu.add(TheContextMenuItem::new_with_accel(
-                fl!("menu_open"),
-                TheId::named("Open"),
-                TheAccelerator::new(TheAcceleratorKey::CTRLCMD, 'o'),
-            ));
-            file_menu.add(TheContextMenuItem::new_with_accel(
-                fl!("menu_save"),
-                TheId::named("Save"),
-                TheAccelerator::new(TheAcceleratorKey::CTRLCMD, 's'),
-            ));
-            file_menu.add(TheContextMenuItem::new_with_accel(
-                fl!("menu_save_as"),
-                TheId::named("Save As"),
-                TheAccelerator::new(TheAcceleratorKey::CTRLCMD, 'a'),
-            ));
-
-            // Blueprint menu
-            let mut blueprint_menu = TheContextMenu::named("Blueprint".to_string());
-            blueprint_menu.add(TheContextMenuItem::new_with_accel(
-                "Open Blueprint Editor".to_string(),
-                TheId::named("OpenBlueprintEditor"),
-                TheAccelerator::new(TheAcceleratorKey::CTRLCMD, 'b'),
-            ));
-
-            let mut edit_menu = TheContextMenu::named(fl!("menu_edit"));
-            edit_menu.add(TheContextMenuItem::new_with_accel(
-                fl!("menu_undo"),
-                TheId::named("Undo"),
-                TheAccelerator::new(TheAcceleratorKey::CTRLCMD, 'z'),
-            ));
-            edit_menu.add(TheContextMenuItem::new_with_accel(
-                fl!("menu_redo"),
-                TheId::named("Redo"),
-                TheAccelerator::new(TheAcceleratorKey::CTRLCMD | TheAcceleratorKey::SHIFT, 'z'),
-            ));
-            edit_menu.add_separator();
-            edit_menu.add(TheContextMenuItem::new_with_accel(
-                fl!("menu_cut"),
-                TheId::named("Cut"),
-                TheAccelerator::new(TheAcceleratorKey::CTRLCMD, 'x'),
-            ));
-            edit_menu.add(TheContextMenuItem::new_with_accel(
-                fl!("menu_copy"),
-                TheId::named("Copy"),
-                TheAccelerator::new(TheAcceleratorKey::CTRLCMD, 'c'),
-            ));
-            edit_menu.add(TheContextMenuItem::new_with_accel(
-                fl!("menu_paste"),
-                TheId::named("Paste"),
-                TheAccelerator::new(TheAcceleratorKey::CTRLCMD, 'v'),
-            ));
-            edit_menu.add_separator();
-            edit_menu.add(TheContextMenuItem::new_with_accel(
-                fl!("menu_apply_action"),
-                TheId::named("Action Apply"),
-                TheAccelerator::new(TheAcceleratorKey::CTRLCMD, 'p'),
-            ));
-
-            let mut game_menu = TheContextMenu::named(fl!("game"));
-            game_menu.add(TheContextMenuItem::new_with_accel(
-                fl!("menu_play"),
-                TheId::named("Play"),
-                TheAccelerator::new(TheAcceleratorKey::CTRLCMD, 'p'),
-            ));
-            game_menu.add(TheContextMenuItem::new_with_accel(
-                fl!("menu_pause"),
-                TheId::named("Pause"),
-                TheAccelerator::new(TheAcceleratorKey::CTRLCMD, 'o'),
-            ));
-            game_menu.add(TheContextMenuItem::new_with_accel(
-                fl!("menu_stop"),
-                TheId::named("Stop"),
-                TheAccelerator::new(TheAcceleratorKey::CTRLCMD | TheAcceleratorKey::SHIFT, 'p'),
-            ));
-
-            file_menu.register_accel(ctx);
-            edit_menu.register_accel(ctx);
-            game_menu.register_accel(ctx);
-            blueprint_menu.register_accel(ctx);
-
-            menu.add_context_menu(file_menu);
-            menu.add_context_menu(edit_menu);
-            menu.add_context_menu(game_menu);
-            menu.add_context_menu(blueprint_menu);
-            menu_canvas.set_widget(menu);
-            top_canvas.set_top(menu_canvas);
-        }
-
+        // Declare all buttons and top_canvas before use
         let mut menubar = TheMenubar::new(TheId::named("Menubar"));
         #[cfg(feature = "staticlib")]
         menubar.limiter_mut().set_max_height(43);
@@ -490,7 +323,6 @@ impl TheTrait for Editor {
         redo_button.set_status_text(&fl!("status_redo_button"));
         redo_button.set_icon_name("icon_role_redo".to_string());
 
-
         let mut blueprint_button = TheMenubarButton::new(TheId::named("BlueprintEditor"));
         blueprint_button.set_status_text("Open Blueprint Editor");
         blueprint_button.set_icon_name("flowchart".to_string());
@@ -521,14 +353,12 @@ impl TheTrait for Editor {
         let mut patreon_button = TheMenubarButton::new(TheId::named("Patreon"));
         patreon_button.set_status_text(&fl!("status_patreon_button"));
         patreon_button.set_icon_name("patreon".to_string());
-        // patreon_button.set_fixed_size(vec2i(36, 36));
         patreon_button.set_icon_offset(Vec2::new(-4, -2));
 
         let mut help_button = TheMenubarButton::new(TheId::named("Help"));
         help_button.set_status_text(&fl!("status_help_button"));
         help_button.set_icon_name("question-mark".to_string());
         help_button.set_has_state(true);
-        // patreon_button.set_fixed_size(vec2i(36, 36));
         help_button.set_icon_offset(Vec2::new(-2, -2));
 
         #[cfg(all(not(target_arch = "wasm32"), feature = "self-update"))]
@@ -558,7 +388,6 @@ impl TheTrait for Editor {
         hlayout.add_widget(Box::new(input_button));
         hlayout.add_widget(Box::new(TheMenubarSeparator::new(TheId::empty())));
         hlayout.add_widget(Box::new(time_slider));
-        //hlayout.add_widget(Box::new(TheMenubarSeparator::new(TheId::empty())));
 
         #[cfg(all(not(target_arch = "wasm32"), feature = "self-update"))]
         {
@@ -575,13 +404,114 @@ impl TheTrait for Editor {
             hlayout.set_reverse_index(Some(2));
         }
 
+        let mut top_canvas = TheCanvas::new();
         top_canvas.set_widget(menubar);
         top_canvas.set_layout(hlayout);
-        ui.canvas.set_top(top_canvas);
 
-        // Apply theme to UI (egui integration)
-        #[cfg(feature = "egui")]
-        self.theme_settings.apply_theme(ctx.egui_ctx());
+        // Main top menus + submenus
+        let mut menu_canvas = TheCanvas::new();
+        let mut main_menu = TheMenu::new(TheId::named("Main Menu"));
+
+        let mut file_menu = TheContextMenu::named("File".to_string());
+        file_menu.add(TheContextMenuItem::new("New".to_string(), TheId::named("MenuFile::New")));
+        file_menu.add(TheContextMenuItem::new("Open...".to_string(), TheId::named("MenuFile::Open")));
+        file_menu.add(TheContextMenuItem::new("Save".to_string(), TheId::named("MenuFile::Save")));
+        file_menu.add(TheContextMenuItem::new("Save As...".to_string(), TheId::named("MenuFile::SaveAs")));
+        file_menu.add_separator();
+        file_menu.add(TheContextMenuItem::new("Close Project".to_string(), TheId::named("MenuFile::Close")));
+
+        let mut edit_menu = TheContextMenu::named("Edit".to_string());
+        edit_menu.add(TheContextMenuItem::new("Undo".to_string(), TheId::named("MenuEdit::Undo")));
+        edit_menu.add(TheContextMenuItem::new("Redo".to_string(), TheId::named("MenuEdit::Redo")));
+        edit_menu.add_separator();
+        edit_menu.add(TheContextMenuItem::new("Copy".to_string(), TheId::named("MenuEdit::Copy")));
+        edit_menu.add(TheContextMenuItem::new("Paste".to_string(), TheId::named("MenuEdit::Paste")));
+
+        let mut view_menu = TheContextMenu::named("View".to_string());
+        view_menu.add(TheContextMenuItem::new("Toggle Left Toolbar".to_string(), TheId::named("MenuView::ToggleLeft")));
+        view_menu.add(TheContextMenuItem::new("Toggle Right Toolbar".to_string(), TheId::named("MenuView::ToggleRight")));
+        view_menu.add_separator();
+        view_menu.add(TheContextMenuItem::new("Theme: Dark".to_string(), TheId::named("MenuTheme::Dark")));
+        view_menu.add(TheContextMenuItem::new("Theme: Light".to_string(), TheId::named("MenuTheme::Light")));
+        view_menu.add(TheContextMenuItem::new("Theme: Slate".to_string(), TheId::named("MenuTheme::Slate")));
+
+        let mut tools_2d = TheContextMenu::named("2D".to_string());
+        tools_2d.add(TheContextMenuItem::new("Selection".to_string(), TheId::named("MenuTool::Select Tool")));
+        tools_2d.add(TheContextMenuItem::new("Vertex".to_string(), TheId::named("MenuTool::Vertex Tool")));
+        tools_2d.add(TheContextMenuItem::new("Linedef".to_string(), TheId::named("MenuTool::Linedef Tool")));
+        tools_2d.add(TheContextMenuItem::new("Sector".to_string(), TheId::named("MenuTool::Sector Tool")));
+
+        let mut tools_3d = TheContextMenu::named("3D".to_string());
+        tools_3d.add(TheContextMenuItem::new("Terrain".to_string(), TheId::named("MenuTool::World Tool")));
+        tools_3d.add(TheContextMenuItem::new("Render".to_string(), TheId::named("MenuTool::Render Tool")));
+        tools_3d.add(TheContextMenuItem::new("Entity".to_string(), TheId::named("MenuTool::Entity Tool")));
+
+        let mut tools_menu = TheContextMenu::named("Tools".to_string());
+        tools_menu.add(TheContextMenuItem::new_submenu(
+            "2D Tools".to_string(),
+            TheId::named("MenuTools::2D"),
+            tools_2d,
+        ));
+        tools_menu.add(TheContextMenuItem::new_submenu(
+            "3D Tools".to_string(),
+            TheId::named("MenuTools::3D"),
+            tools_3d,
+        ));
+        tools_menu.add_separator();
+        tools_menu.add(TheContextMenuItem::new("Code".to_string(), TheId::named("MenuTool::Code Tool")));
+        tools_menu.add(TheContextMenuItem::new("Data".to_string(), TheId::named("MenuTool::Data Tool")));
+        tools_menu.add(TheContextMenuItem::new("Config".to_string(), TheId::named("MenuTool::Config Tool")));
+        tools_menu.add(TheContextMenuItem::new("Info".to_string(), TheId::named("MenuTool::Info Tool")));
+
+        let mut build_menu = TheContextMenu::named("Build".to_string());
+        build_menu.add(TheContextMenuItem::new("Play".to_string(), TheId::named("MenuBuild::Play")));
+        build_menu.add(TheContextMenuItem::new("Pause".to_string(), TheId::named("MenuBuild::Pause")));
+        build_menu.add(TheContextMenuItem::new("Stop".to_string(), TheId::named("MenuBuild::Stop")));
+        build_menu.add_separator();
+        build_menu.add(TheContextMenuItem::new("Build 2D Export".to_string(), TheId::named("MenuBuild::Export2D")));
+        build_menu.add(TheContextMenuItem::new("Build 3D Export".to_string(), TheId::named("MenuBuild::Export3D")));
+
+        let mut settings_menu = TheContextMenu::named("Settings".to_string());
+        settings_menu.add(TheContextMenuItem::new("Toggle Snap".to_string(), TheId::named("MenuOption::Snap")));
+        settings_menu.add(TheContextMenuItem::new("Toggle Grid".to_string(), TheId::named("MenuOption::Grid")));
+        settings_menu.add(TheContextMenuItem::new("Toggle Gizmos".to_string(), TheId::named("MenuOption::Gizmos")));
+
+        let mut help_menu = TheContextMenu::named("Help".to_string());
+        help_menu.add(TheContextMenuItem::new("Docs".to_string(), TheId::named("MenuHelp::Docs")));
+        help_menu.add(TheContextMenuItem::new("Examples".to_string(), TheId::named("MenuHelp::Examples")));
+        help_menu.add(TheContextMenuItem::new("About".to_string(), TheId::named("MenuHelp::About")));
+
+        main_menu.add_context_menu(file_menu);
+        main_menu.add_context_menu(edit_menu);
+        main_menu.add_context_menu(view_menu);
+        main_menu.add_context_menu(tools_menu);
+        main_menu.add_context_menu(build_menu);
+        main_menu.add_context_menu(settings_menu);
+        main_menu.add_context_menu(help_menu);
+
+        menu_canvas.set_widget(main_menu);
+        top_canvas.set_top(menu_canvas);
+
+        // Top quick tool bar
+        let mut top_quick_canvas = TheCanvas::new();
+        top_quick_canvas.set_widget(TheToolListBar::new(TheId::named("Top Quick Tool Bar")));
+        let mut top_quick_layout = TheHLayout::new(TheId::named("Top Quick Tool Layout"));
+        top_quick_layout.set_background_color(None);
+        top_quick_layout.set_margin(Vec4::new(10, 2, 10, 2));
+        top_quick_layout.set_padding(1);
+        if let Ok(toollist) = TOOLLIST.read() {
+            for tool in &toollist.game_tools {
+                let quick_id = format!("TopTool::{}", tool.id().name);
+                let mut button =
+                    TheToolListButton::new(TheId::named(&quick_id));
+                button.set_icon_name(tool.icon_name());
+                button.set_status_text(&format!("Activate {}", tool.info()));
+                top_quick_layout.add_widget(Box::new(button));
+            }
+        }
+        top_quick_canvas.set_layout(top_quick_layout);
+        top_canvas.set_bottom(top_quick_canvas);
+        ui.canvas.set_top(top_canvas);
 
         // Sidebar
         self.sidebar.init_ui(ui, ctx, &mut self.server_ctx);
@@ -642,6 +572,126 @@ impl TheTrait for Editor {
         tool_list_canvas.set_right(tool_list_border_canvas);
         shared_canvas.set_left(tool_list_canvas);
 
+        // Right side GUI/API toolbar
+        let mut right_tool_canvas = TheCanvas::new();
+
+        let mut right_tool_bar_canvas = TheCanvas::new();
+        right_tool_bar_canvas.set_widget(TheToolListBar::new(TheId::named("Right Tool Bar")));
+        right_tool_canvas.set_top(right_tool_bar_canvas);
+
+        let mut right_tool_layout = TheVLayout::new(TheId::named("Right Tool Layout"));
+        right_tool_layout.limiter_mut().set_max_width(51);
+        right_tool_layout.set_margin(Vec4::new(2, 2, 2, 2));
+        right_tool_layout.set_padding(1);
+
+        let mut add_quick_button = |id: &str, icon: &str, status: &str| {
+            let mut button = TheToolListButton::new(TheId::named(id));
+            button.set_icon_name(icon.to_string());
+            button.set_status_text(status);
+            right_tool_layout.add_widget(Box::new(button));
+        };
+
+        add_quick_button("QuickGuiOpen", "icon_role_load", "Open project");
+        add_quick_button("QuickGuiSave", "icon_role_save", "Save project");
+        add_quick_button("QuickGuiUndo", "icon_role_undo", "Undo");
+        add_quick_button("QuickGuiRedo", "icon_role_redo", "Redo");
+        add_quick_button("QuickGuiPlay", "play", "Run game");
+        add_quick_button("QuickGuiPause", "play-pause", "Pause game");
+        add_quick_button("QuickGuiStop", "stop-fill", "Stop game");
+        add_quick_button("QuickGuiHelp", "question-mark", "Toggle help mode");
+        add_quick_button("QuickThemeDark", "dark_tabbar_selected", "Dark theme preset");
+        add_quick_button("QuickThemeLight", "dark_tabbar_hover", "Light theme preset");
+        add_quick_button("QuickThemeSlate", "dark_tabbar_normal", "Slate theme preset");
+        add_quick_button("QuickOptSnap", "selection", "Toggle snap-to-grid");
+        add_quick_button("QuickOptGrid", "square", "Toggle grid visibility");
+        add_quick_button("QuickOptGizmos", "transform", "Toggle gizmos");
+
+        if let Ok(toollist) = TOOLLIST.read() {
+            for tool in &toollist.game_tools {
+                let quick_id = format!("RightTool::{}", tool.id().name);
+                let mut button =
+                    TheToolListButton::new(TheId::named(&quick_id));
+                button.set_icon_name(tool.icon_name());
+                button.set_status_text(&format!("Activate {}", tool.info()));
+                right_tool_layout.add_widget(Box::new(button));
+            }
+        }
+
+        right_tool_canvas.set_layout(right_tool_layout);
+
+        // Right side settings/options panel
+        let mut right_settings_canvas = TheCanvas::new();
+        right_settings_canvas
+            .set_widget(TheTraybar::new(TheId::named("Right Settings Bar")));
+
+        let mut right_settings_layout = TheTextLayout::new(TheId::named("Right Settings Layout"));
+        right_settings_layout.set_margin(Vec4::new(4, 4, 4, 4));
+        right_settings_layout.set_padding(4);
+        right_settings_layout.limiter_mut().set_max_width(260);
+
+        let mut theme_dropdown = TheDropdownMenu::new(TheId::named("ThemePresetDropdown"));
+        theme_dropdown.add_option("Dark".to_string());
+        theme_dropdown.add_option("Light".to_string());
+        theme_dropdown.add_option("Slate".to_string());
+        let theme_index = match self.theme_preset.as_str() {
+            "Light" => 1,
+            "Slate" => 2,
+            _ => 0,
+        };
+        theme_dropdown.set_selected_index(theme_index);
+        right_settings_layout.add_pair("Theme".to_string(), Box::new(theme_dropdown));
+
+        let mut snap_cb = TheCheckButton::new(TheId::named("OptionSnapCB"));
+        snap_cb.set_value(TheValue::Bool(self.option_snap_to_grid));
+        right_settings_layout.add_pair("Snap".to_string(), Box::new(snap_cb));
+
+        let mut grid_cb = TheCheckButton::new(TheId::named("OptionGridCB"));
+        grid_cb.set_value(TheValue::Bool(self.option_show_grid));
+        right_settings_layout.add_pair("Grid".to_string(), Box::new(grid_cb));
+
+        let mut gizmo_cb = TheCheckButton::new(TheId::named("OptionGizmoCB"));
+        gizmo_cb.set_value(TheValue::Bool(self.option_show_gizmos));
+        right_settings_layout.add_pair("Gizmos".to_string(), Box::new(gizmo_cb));
+
+        let mut left_cb = TheCheckButton::new(TheId::named("OptionLeftToolbarCB"));
+        left_cb.set_value(TheValue::Bool(self.show_left_toolbar));
+        right_settings_layout.add_pair("Left Bar".to_string(), Box::new(left_cb));
+
+        let mut right_cb = TheCheckButton::new(TheId::named("OptionRightToolbarCB"));
+        right_cb.set_value(TheValue::Bool(self.show_right_toolbar));
+        right_settings_layout.add_pair("Right Bar".to_string(), Box::new(right_cb));
+
+        let mut fps_edit = TheTextLineEdit::new(TheId::named("OptionTargetFpsEdit"));
+        fps_edit.set_value(TheValue::Int(CONFIGEDITOR.read().unwrap().target_fps));
+        fps_edit.set_range(TheValue::RangeI32(1..=120));
+        fps_edit.set_continuous(true);
+        right_settings_layout.add_pair("FPS".to_string(), Box::new(fps_edit));
+
+        let mut tick_edit = TheTextLineEdit::new(TheId::named("OptionTickMsEdit"));
+        tick_edit.set_value(TheValue::Int(CONFIGEDITOR.read().unwrap().game_tick_ms));
+        tick_edit.set_range(TheValue::RangeI32(10..=2000));
+        tick_edit.set_continuous(true);
+        right_settings_layout.add_pair("Tick ms".to_string(), Box::new(tick_edit));
+
+        let mut grid_size_edit = TheTextLineEdit::new(TheId::named("OptionGridSizeEdit"));
+        grid_size_edit.set_value(TheValue::Int(CONFIGEDITOR.read().unwrap().grid_size));
+        grid_size_edit.set_range(TheValue::RangeI32(4..=256));
+        grid_size_edit.set_continuous(true);
+        right_settings_layout.add_pair("Grid Size".to_string(), Box::new(grid_size_edit));
+
+        right_settings_canvas.set_layout(right_settings_layout);
+        right_tool_canvas.set_bottom(right_settings_canvas);
+
+        let mut right_tool_border_canvas = TheCanvas::new();
+        let mut right_border_widget = TheIconView::new(TheId::empty());
+        right_border_widget.set_border_color(Some([82, 82, 82, 255]));
+        right_border_widget.limiter_mut().set_max_width(1);
+        right_border_widget.limiter_mut().set_max_height(i32::MAX);
+        right_tool_border_canvas.set_widget(right_border_widget);
+        right_tool_canvas.set_left(right_tool_border_canvas);
+
+        shared_canvas.set_right(right_tool_canvas);
+
         ui.canvas.set_center(shared_canvas);
 
         let mut status_canvas = TheCanvas::new();
@@ -650,6 +700,11 @@ impl TheTrait for Editor {
         status_canvas.set_widget(statusbar);
 
         ui.canvas.set_bottom(status_canvas);
+
+        self.apply_toolbar_visibility(ui, ctx);
+        self.apply_theme_preset(ui, ctx);
+        self.server_ctx.snap_to_grid = self.option_snap_to_grid;
+        self.server_ctx.show_editing_geometry = self.option_show_gizmos;
 
         // -
 
@@ -747,39 +802,11 @@ impl TheTrait for Editor {
                         }
                     }
                 }
-                SceneManagerResult::Chunk(chunk, togo, total, billboards) => {
+                SceneManagerResult::Chunk(chunk, togo, total, _billboards) => {
+                    let (_chunk, _total) = (chunk, total);
                     if togo == 0 {
                         self.server_ctx.background_progress = None;
-                    } else {
-                        self.server_ctx.background_progress = Some(format!("{togo}/{total}"));
                     }
-
-                    let mut rusterix = RUSTERIX.write().unwrap();
-
-                    rusterix
-                        .scene_handler
-                        .vm
-                        .execute(scenevm::Atom::RemoveChunkAt {
-                            origin: chunk.origin,
-                        });
-
-                    rusterix.scene_handler.vm.execute(scenevm::Atom::AddChunk {
-                        id: Uuid::new_v4(),
-                        chunk: chunk,
-                    });
-
-                    // Add billboards to scene_handler (indexed by GeoId)
-                    for billboard in billboards {
-                        rusterix
-                            .scene_handler
-                            .billboards
-                            .insert(billboard.geo_id, billboard);
-                    }
-
-                    ctx.ui.send(TheEvent::Custom(
-                        TheId::named("Update Minimap"),
-                        TheValue::Empty,
-                    ));
                 }
                 SceneManagerResult::UpdatedBatch3D(coord, batch) => {
                     let mut rusterix = RUSTERIX.write().unwrap();
@@ -849,6 +876,12 @@ impl TheTrait for Editor {
                 "no_rect_geo",
                 Value::Bool(self.server_ctx.no_rect_geo_on_map),
             );
+            self.build_values
+                .set("show_grid", Value::Bool(self.option_show_grid));
+            self.build_values
+                .set("show_gizmos", Value::Bool(self.option_show_gizmos));
+            self.build_values
+                .set("snap_to_grid", Value::Bool(self.option_snap_to_grid));
 
             extract_build_values_from_config(&mut self.build_values);
 
@@ -1263,6 +1296,150 @@ impl TheTrait for Editor {
                 redraw = true;
             }
             match event {
+                TheEvent::ContextMenuSelected(_widget_id, item_id) => {
+                    if item_id.name.starts_with("MenuTool::") {
+                        if let Some(tool_name) = item_id.name.strip_prefix("MenuTool::") {
+                            ctx.ui.send(TheEvent::Custom(
+                                TheId::named("Set Tool"),
+                                TheValue::Text(tool_name.to_string()),
+                            ));
+                            redraw = true;
+                        }
+                    } else if item_id.name == "MenuFile::New" {
+                        ctx.ui.send(TheEvent::StateChanged(
+                            TheId::named("New"),
+                            TheWidgetState::Clicked,
+                        ));
+                    } else if item_id.name == "MenuFile::Open" {
+                        ctx.ui.send(TheEvent::StateChanged(
+                            TheId::named("Open"),
+                            TheWidgetState::Clicked,
+                        ));
+                    } else if item_id.name == "MenuFile::Save" {
+                        ctx.ui.send(TheEvent::StateChanged(
+                            TheId::named("Save"),
+                            TheWidgetState::Clicked,
+                        ));
+                    } else if item_id.name == "MenuFile::SaveAs" {
+                        ctx.ui.send(TheEvent::StateChanged(
+                            TheId::named("Save As"),
+                            TheWidgetState::Clicked,
+                        ));
+                    } else if item_id.name == "MenuEdit::Undo" {
+                        ctx.ui.send(TheEvent::StateChanged(
+                            TheId::named("Undo"),
+                            TheWidgetState::Clicked,
+                        ));
+                    } else if item_id.name == "MenuEdit::Redo" {
+                        ctx.ui.send(TheEvent::StateChanged(
+                            TheId::named("Redo"),
+                            TheWidgetState::Clicked,
+                        ));
+                    } else if item_id.name == "MenuBuild::Play" {
+                        ctx.ui.send(TheEvent::StateChanged(
+                            TheId::named("Play"),
+                            TheWidgetState::Clicked,
+                        ));
+                    } else if item_id.name == "MenuBuild::Pause" {
+                        ctx.ui.send(TheEvent::StateChanged(
+                            TheId::named("Pause"),
+                            TheWidgetState::Clicked,
+                        ));
+                    } else if item_id.name == "MenuBuild::Stop" {
+                        ctx.ui.send(TheEvent::StateChanged(
+                            TheId::named("Stop"),
+                            TheWidgetState::Clicked,
+                        ));
+                    } else if item_id.name == "MenuView::ToggleLeft" {
+                        self.show_left_toolbar = !self.show_left_toolbar;
+                        self.apply_toolbar_visibility(ui, ctx);
+                        ui.set_widget_value(
+                            "OptionLeftToolbarCB",
+                            ctx,
+                            TheValue::Bool(self.show_left_toolbar),
+                        );
+                    } else if item_id.name == "MenuView::ToggleRight" {
+                        self.show_right_toolbar = !self.show_right_toolbar;
+                        self.apply_toolbar_visibility(ui, ctx);
+                        ui.set_widget_value(
+                            "OptionRightToolbarCB",
+                            ctx,
+                            TheValue::Bool(self.show_right_toolbar),
+                        );
+                    } else if item_id.name == "MenuTheme::Dark" {
+                        self.theme_preset = "Dark".to_string();
+                        self.apply_theme_preset(ui, ctx);
+                        ui.set_widget_value("ThemePresetDropdown", ctx, TheValue::Int(0));
+                    } else if item_id.name == "MenuTheme::Light" {
+                        self.theme_preset = "Light".to_string();
+                        self.apply_theme_preset(ui, ctx);
+                        ui.set_widget_value("ThemePresetDropdown", ctx, TheValue::Int(1));
+                    } else if item_id.name == "MenuTheme::Slate" {
+                        self.theme_preset = "Slate".to_string();
+                        self.apply_theme_preset(ui, ctx);
+                        ui.set_widget_value("ThemePresetDropdown", ctx, TheValue::Int(2));
+                    } else if item_id.name == "MenuOption::Snap" {
+                        self.option_snap_to_grid = !self.option_snap_to_grid;
+                        self.server_ctx.snap_to_grid = self.option_snap_to_grid;
+                        ui.set_widget_value(
+                            "OptionSnapCB",
+                            ctx,
+                            TheValue::Bool(self.option_snap_to_grid),
+                        );
+                    } else if item_id.name == "MenuOption::Grid" {
+                        self.option_show_grid = !self.option_show_grid;
+                        ui.set_widget_value(
+                            "OptionGridCB",
+                            ctx,
+                            TheValue::Bool(self.option_show_grid),
+                        );
+                    } else if item_id.name == "MenuOption::Gizmos" {
+                        self.option_show_gizmos = !self.option_show_gizmos;
+                        self.server_ctx.show_editing_geometry = self.option_show_gizmos;
+                        ui.set_widget_value(
+                            "OptionGizmoCB",
+                            ctx,
+                            TheValue::Bool(self.option_show_gizmos),
+                        );
+                    } else if item_id.name == "MenuHelp::Docs" {
+                        _ = open::that("https://www.eldiron.com/docs");
+                    } else if item_id.name == "MenuHelp::Examples" {
+                        _ = open::that("https://www.eldiron.com/docs/games");
+                    } else if item_id.name == "MenuHelp::About" {
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Encheament Engine: integrated 2D/3D editor shell.".to_string(),
+                        ));
+                    } else if item_id.name == "MenuBuild::Export2D" {
+                        ctx.ui.save_file_requester(
+                            TheId::named_with_id("Export2DPackage", Uuid::new_v4()),
+                            "Export 2D Package".into(),
+                            TheFileExtension::new("JSON".into(), vec!["json".to_string()]),
+                        );
+                    } else if item_id.name == "MenuBuild::Export3D" {
+                        ctx.ui.save_file_requester(
+                            TheId::named_with_id("Export3DPackage", Uuid::new_v4()),
+                            "Export 3D Package".into(),
+                            TheFileExtension::new("JSON".into(), vec!["json".to_string()]),
+                        );
+                    } else if item_id.name == "MenuEdit::Copy" {
+                        ctx.ui.send(TheEvent::StateChanged(
+                            TheId::named("Copy"),
+                            TheWidgetState::Clicked,
+                        ));
+                    } else if item_id.name == "MenuEdit::Paste" {
+                        ctx.ui.send(TheEvent::StateChanged(
+                            TheId::named("Paste"),
+                            TheWidgetState::Clicked,
+                        ));
+                    } else if item_id.name == "MenuFile::Close" {
+                        self.project_path = None;
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Project closed (path cleared).".to_string(),
+                        ));
+                    }
+                }
                 TheEvent::CustomUndo(id, p, n) => {
                     if id.name == "ModuleUndo" {
                         if CODEEDITOR.read().unwrap().active_panel == VisibleCodePanel::Shade {
@@ -1778,6 +1955,45 @@ impl TheTrait for Editor {
                             let undo = PaletteUndoAtom::Edit(prev, self.project.palette.clone());
                             UNDOMANAGER.write().unwrap().add_palette_undo(undo, ctx);
                         }
+                    } else if id.name == "Export2DPackage" || id.name == "Export3DPackage" {
+                        let export_kind = if id.name == "Export3DPackage" { "3D" } else { "2D" };
+                        for p in paths {
+                            let payload = serde_json::json!({
+                                "engine": "Encheament Engine",
+                                "export_kind": export_kind,
+                                "project_name": self.project.name,
+                                "region_count": self.project.regions.len(),
+                                "character_count": self.project.characters.len(),
+                                "item_count": self.project.items.len(),
+                                "screen_count": self.project.screens.len(),
+                                "asset_count": self.project.assets.len(),
+                                "target_fps": CONFIGEDITOR.read().unwrap().target_fps,
+                                "tick_ms": CONFIGEDITOR.read().unwrap().game_tick_ms,
+                                "grid_size": CONFIGEDITOR.read().unwrap().grid_size,
+                                "theme": self.theme_preset,
+                            });
+                            match serde_json::to_string_pretty(&payload) {
+                                Ok(text) => {
+                                    if std::fs::write(&p, text).is_ok() {
+                                        ctx.ui.send(TheEvent::SetStatusText(
+                                            TheId::empty(),
+                                            format!("Exported {} package manifest to {:?}", export_kind, p),
+                                        ));
+                                    } else {
+                                        ctx.ui.send(TheEvent::SetStatusText(
+                                            TheId::empty(),
+                                            format!("Failed to export {} package to {:?}", export_kind, p),
+                                        ));
+                                    }
+                                }
+                                Err(err) => {
+                                    ctx.ui.send(TheEvent::SetStatusText(
+                                        TheId::empty(),
+                                        format!("Failed to create {} export payload: {}", export_kind, err),
+                                    ));
+                                }
+                            }
+                        }
                     } else
                     // Open
                     if id.name == "Open" {
@@ -1982,6 +2198,111 @@ impl TheTrait for Editor {
                     }
                 }
                 TheEvent::StateChanged(id, state) => {
+                    let is_direct_action =
+                        state == TheWidgetState::Clicked || state == TheWidgetState::Selected;
+                    if is_direct_action {
+                        if let Some(tool_name) = id
+                            .name
+                            .strip_prefix("TopTool::")
+                            .or_else(|| id.name.strip_prefix("RightTool::"))
+                        {
+                            ctx.ui.send(TheEvent::Custom(
+                                TheId::named("Set Tool"),
+                                TheValue::Text(tool_name.to_string()),
+                            ));
+                            redraw = true;
+                        } else if id.name == "QuickGuiOpen" {
+                            ctx.ui.send(TheEvent::StateChanged(
+                                TheId::named("Open"),
+                                TheWidgetState::Clicked,
+                            ));
+                            redraw = true;
+                        } else if id.name == "QuickGuiSave" {
+                            ctx.ui.send(TheEvent::StateChanged(
+                                TheId::named("Save"),
+                                TheWidgetState::Clicked,
+                            ));
+                            redraw = true;
+                        } else if id.name == "QuickGuiUndo" {
+                            ctx.ui.send(TheEvent::StateChanged(
+                                TheId::named("Undo"),
+                                TheWidgetState::Clicked,
+                            ));
+                            redraw = true;
+                        } else if id.name == "QuickGuiRedo" {
+                            ctx.ui.send(TheEvent::StateChanged(
+                                TheId::named("Redo"),
+                                TheWidgetState::Clicked,
+                            ));
+                            redraw = true;
+                        } else if id.name == "QuickGuiPlay" {
+                            ctx.ui.send(TheEvent::StateChanged(
+                                TheId::named("Play"),
+                                TheWidgetState::Clicked,
+                            ));
+                            redraw = true;
+                        } else if id.name == "QuickGuiPause" {
+                            ctx.ui.send(TheEvent::StateChanged(
+                                TheId::named("Pause"),
+                                TheWidgetState::Clicked,
+                            ));
+                            redraw = true;
+                        } else if id.name == "QuickGuiStop" {
+                            ctx.ui.send(TheEvent::StateChanged(
+                                TheId::named("Stop"),
+                                TheWidgetState::Clicked,
+                            ));
+                            redraw = true;
+                        } else if id.name == "QuickGuiHelp" {
+                            ctx.ui.send(TheEvent::StateChanged(
+                                TheId::named("Help"),
+                                TheWidgetState::Clicked,
+                            ));
+                            redraw = true;
+                        } else if id.name == "QuickThemeDark" {
+                            self.theme_preset = "Dark".to_string();
+                            self.apply_theme_preset(ui, ctx);
+                            ui.set_widget_value("ThemePresetDropdown", ctx, TheValue::Int(0));
+                            redraw = true;
+                        } else if id.name == "QuickThemeLight" {
+                            self.theme_preset = "Light".to_string();
+                            self.apply_theme_preset(ui, ctx);
+                            ui.set_widget_value("ThemePresetDropdown", ctx, TheValue::Int(1));
+                            redraw = true;
+                        } else if id.name == "QuickThemeSlate" {
+                            self.theme_preset = "Slate".to_string();
+                            self.apply_theme_preset(ui, ctx);
+                            ui.set_widget_value("ThemePresetDropdown", ctx, TheValue::Int(2));
+                            redraw = true;
+                        } else if id.name == "QuickOptSnap" {
+                            self.option_snap_to_grid = !self.option_snap_to_grid;
+                            self.server_ctx.snap_to_grid = self.option_snap_to_grid;
+                            ui.set_widget_value(
+                                "OptionSnapCB",
+                                ctx,
+                                TheValue::Bool(self.option_snap_to_grid),
+                            );
+                            redraw = true;
+                        } else if id.name == "QuickOptGrid" {
+                            self.option_show_grid = !self.option_show_grid;
+                            ui.set_widget_value(
+                                "OptionGridCB",
+                                ctx,
+                                TheValue::Bool(self.option_show_grid),
+                            );
+                            redraw = true;
+                        } else if id.name == "QuickOptGizmos" {
+                            self.option_show_gizmos = !self.option_show_gizmos;
+                            self.server_ctx.show_editing_geometry = self.option_show_gizmos;
+                            ui.set_widget_value(
+                                "OptionGizmoCB",
+                                ctx,
+                                TheValue::Bool(self.option_show_gizmos),
+                            );
+                            redraw = true;
+                        }
+                    }
+
                     if id.name == "Help" {
                         self.server_ctx.help_mode = state == TheWidgetState::Clicked;
                     }
@@ -2324,6 +2645,16 @@ impl TheTrait for Editor {
                         }
                     }
                 }
+                TheEvent::IndexChanged(id, index) => {
+                    if id.name == "ThemePresetDropdown" {
+                        self.theme_preset = match index {
+                            1 => "Light".to_string(),
+                            2 => "Slate".to_string(),
+                            _ => "Dark".to_string(),
+                        };
+                        self.apply_theme_preset(ui, ctx);
+                    }
+                }
                 TheEvent::ValueChanged(id, value) => {
                     if id.name == "Server Time Slider" {
                         if let TheValue::Time(time) = value {
@@ -2336,6 +2667,42 @@ impl TheTrait for Editor {
                                     rusterix.server.set_time(&map.id, time);
                                 }
                             }
+                        }
+                    } else if id.name == "OptionSnapCB" {
+                        if let TheValue::Bool(v) = value {
+                            self.option_snap_to_grid = v;
+                            self.server_ctx.snap_to_grid = v;
+                        }
+                    } else if id.name == "OptionGridCB" {
+                        if let TheValue::Bool(v) = value {
+                            self.option_show_grid = v;
+                        }
+                    } else if id.name == "OptionGizmoCB" {
+                        if let TheValue::Bool(v) = value {
+                            self.option_show_gizmos = v;
+                            self.server_ctx.show_editing_geometry = v;
+                        }
+                    } else if id.name == "OptionLeftToolbarCB" {
+                        if let TheValue::Bool(v) = value {
+                            self.show_left_toolbar = v;
+                            self.apply_toolbar_visibility(ui, ctx);
+                        }
+                    } else if id.name == "OptionRightToolbarCB" {
+                        if let TheValue::Bool(v) = value {
+                            self.show_right_toolbar = v;
+                            self.apply_toolbar_visibility(ui, ctx);
+                        }
+                    } else if id.name == "OptionTargetFpsEdit" {
+                        if let Some(v) = value.to_i32() {
+                            CONFIGEDITOR.write().unwrap().target_fps = v.clamp(1, 120);
+                        }
+                    } else if id.name == "OptionTickMsEdit" {
+                        if let Some(v) = value.to_i32() {
+                            CONFIGEDITOR.write().unwrap().game_tick_ms = v.clamp(10, 2000);
+                        }
+                    } else if id.name == "OptionGridSizeEdit" {
+                        if let Some(v) = value.to_i32() {
+                            CONFIGEDITOR.write().unwrap().grid_size = v.clamp(4, 256);
                         }
                     }
                 }
@@ -2375,10 +2742,13 @@ impl TheTrait for Editor {
                 }
                 SelfUpdateEvent::UpdateCompleted(release) => {
                     if let Some(statusbar) = ui.get_widget("Statusbar") {
-                        statusbar.as_statusbar().unwrap().set_text(format!(
-                            "Updated to version {}. Please restart the application to enjoy the new features.",
-                            release.version
-                        ));
+                        statusbar
+                            .as_statusbar()
+                            .unwrap()
+                            .set_text(format!(
+                                "Updated to version {}. Please restart the application to enjoy the new features.",
+                                release.version
+                            ));
                     }
                 }
                 SelfUpdateEvent::UpdateConfirm(release) => {
@@ -2440,11 +2810,12 @@ impl TheTrait for Editor {
 
     /// Returns true if there are changes
     fn has_changes(&self) -> bool {
-        UNDOMANAGER.read().unwrap().has_undo() || DOCKMANAGER.read().unwrap().has_dock_changes()
+	UNDOMANAGER.read().unwrap().has_undo() || DOCKMANAGER.read().unwrap().has_dock_changes()
     }
 }
 
 pub trait EldironEditor {
+    // ...existing trait methods...
     fn update_server_state_icons(&mut self, ui: &mut TheUI);
 }
 

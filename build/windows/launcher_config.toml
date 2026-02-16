@@ -1,0 +1,16 @@
+# Launcher and Installer Configuration
+
+# Set to true to enable installer, false for dev mode (no installer)
+enable_installer = true
+
+dev_mode = false
+
+# Splash screen and logo paths
+splash_screen = "../../enchantment_engine_branding_pack/splash_screens/splash_1920x1080.png"
+logo = "../../enchantment_engine_branding_pack/launcher/launcher_icon_1024.png"
+
+# Loading bar settings
+loading_bar_color = "#FFD740"
+loading_bar_background = "#222222"
+
+# Additional settings can be added here

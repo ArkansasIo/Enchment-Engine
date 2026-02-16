@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "launcher_api",
+    "launcher",
+    "installer"
+]

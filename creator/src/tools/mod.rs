@@ -1,18 +1,18 @@
 pub use crate::prelude::*;
 use rusterix::Assets;
 
-// pub mod code;
-// pub mod config;
-// pub mod data;
+pub mod code;
+pub mod config;
+pub mod data;
 pub mod game;
-// pub mod info;
+pub mod info;
 pub mod linedef;
 pub mod rect;
-// pub mod render;
+pub mod render;
 pub mod sector;
 pub mod selection;
-// pub mod terrain;
-// pub mod tileset;
+pub mod terrain;
+pub mod tileset;
 pub mod entity;
 pub mod vertex;
 

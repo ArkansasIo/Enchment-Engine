@@ -72,11 +72,11 @@ impl Tool for ConfigTool {
                         if let Ok(toml) = project.config.parse::<Table>() {
                             *CONFIG.write().unwrap() = toml;
                         }
-                        let ts = CONFIGEDITOR.read().unwrap().tile_size;
+                        let ts = CONFIGEDITOR.read().unwrap().grid_size;
                         CONFIGEDITOR.write().unwrap().read_defaults();
 
-                        // If the tile_size changed update the materials
-                        if ts != CONFIGEDITOR.read().unwrap().tile_size {
+                        // If the grid_size changed update the materials
+                        if ts != CONFIGEDITOR.read().unwrap().grid_size {
                             ctx.ui.send(TheEvent::Custom(
                                 TheId::named("Update Materialpicker"),
                                 TheValue::Empty,

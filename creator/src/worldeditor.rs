@@ -261,7 +261,7 @@ impl WorldEditor {
         ctx: &mut TheContext,
         map: &mut Map,
         server_ctx: &mut ServerContext,
-    ) -> Option<RegionUndoAtom> {
+    ) -> Option<ProjectUndoAtom> {
         let mut hover = |coord: Vec2<i32>| {
             if let Some(render_view) = ui.get_render_view("PolyView") {
                 let dim = *render_view.dim();

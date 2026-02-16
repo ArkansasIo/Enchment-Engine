@@ -1,4 +1,11 @@
 use crate::editor::{CODEEDITOR, NODEEDITOR, RUSTERIX, SHAPEPICKER, UNDOMANAGER};
+use crate::tools::render::RenderTool;
+use crate::tools::terrain::TerrainTool;
+use crate::tools::code::CodeTool;
+use crate::tools::data::DataTool;
+use crate::tools::tileset::TilesetTool;
+use crate::tools::config::ConfigTool;
+use crate::tools::info::InfoTool;
 use crate::prelude::*;
 pub use crate::tools::rect::RectTool;
 use rusterix::Assets;
@@ -49,13 +56,13 @@ impl ToolList {
             Box::new(SectorTool::new()),
             Box::new(RectTool::new()),
             Box::new(crate::tools::entity::EntityTool::new()),
-            // Box::new(RenderTool::new()),
-            // Box::new(TerrainTool::new()),
-            // Box::new(CodeTool::new()),
-            // Box::new(DataTool::new()),
-            // Box::new(TilesetTool::new()),
-            // Box::new(ConfigTool::new()),
-            // Box::new(InfoTool::new()),
+            Box::new(RenderTool::new()),
+            Box::new(TerrainTool::new()),
+            Box::new(CodeTool::new()),
+            Box::new(DataTool::new()),
+            Box::new(TilesetTool::new()),
+            Box::new(ConfigTool::new()),
+            Box::new(InfoTool::new()),
             Box::new(GameTool::new()),
         ];
         Self {

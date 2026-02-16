@@ -152,7 +152,7 @@ impl Tool for TerrainTool {
         ctx: &mut TheContext,
         map: &mut Map,
         server_ctx: &mut ServerContext,
-    ) -> Option<RegionUndoAtom> {
+    ) -> Option<ProjectUndoAtom> {
         WORLDEDITOR
             .write()
             .unwrap()

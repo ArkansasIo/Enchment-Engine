@@ -3,6 +3,7 @@
 use rustapi::editor::Editor;
 use theframework::*;
 
+use std::panic;
 fn main() {
     println!("[DEBUG] main() started");
     let args: Vec<_> = std::env::args().collect();
@@ -21,6 +22,20 @@ fn main() {
     app.set_cmd_line_args(args);
 
     println!("[DEBUG] Running TheApp");
-    let () = app.run(Box::new(editor));
-    println!("[DEBUG] TheApp exited");
+    let result = panic::catch_unwind(|| {
+        app.run(Box::new(editor));
+    });
+    match result {
+        Ok(_) => println!("[DEBUG] TheApp exited normally"),
+        Err(e) => {
+            println!("[ERROR] TheApp panicked!");
+            if let Some(s) = e.downcast_ref::<&str>() {
+                println!("Panic info: {}", s);
+            } else if let Some(s) = e.downcast_ref::<String>() {
+                println!("Panic info: {}", s);
+            } else {
+                println!("Panic occurred but couldn't get info.");
+            }
+        }
+    }
 }

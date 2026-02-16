@@ -536,6 +536,8 @@ pub struct ServerContext {
 
     ///Switch for showing 3D editing geometry
     pub show_editing_geometry: bool,
+    /// Enable snapping to grid/sub-grid in editor input conversions.
+    pub snap_to_grid: bool,
 
     /// Position of the 2D editing slice.
     pub editing_slice: f32,
@@ -659,6 +661,7 @@ impl ServerContext {
 
             selected_hud_icon_index: 0,
             show_editing_geometry: true,
+            snap_to_grid: true,
 
             gizmo_mode: GizmoMode::XZ,
 
@@ -739,6 +742,11 @@ impl ServerContext {
     ) -> Vec2<f32> {
         let grid_space_pos = coord - screen_size / 2.0 - Vec2::new(map.offset.x, -map.offset.y);
         let snapped = grid_space_pos / map.grid_size;
+
+        if !self.snap_to_grid {
+            return snapped;
+        }
+
         let rounded = snapped.map(|x| x.round());
 
         if subdivisions > 1.0 {
@@ -762,6 +770,10 @@ impl ServerContext {
     ) -> Vec2<f32> {
         let grid_space_pos = coord - screen_size / 2.0 - Vec2::new(map.offset.x, -map.offset.y);
         let grid_cell = (grid_space_pos / map.grid_size).map(|x| x.floor());
+
+        if !self.snap_to_grid {
+            return grid_space_pos / map.grid_size;
+        }
 
         if subdivisions > 1.0 {
             let sub_cell_size = map.grid_size / subdivisions;

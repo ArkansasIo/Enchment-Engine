@@ -107,7 +107,7 @@ impl Tool for RenderTool {
         ctx: &mut TheContext,
         map: &mut Map,
         server_ctx: &mut ServerContext,
-    ) -> Option<RegionUndoAtom> {
+    ) -> Option<ProjectUndoAtom> {
         RENDEREDITOR
             .write()
             .unwrap()

@@ -228,32 +228,12 @@ impl Tool for CodeTool {
                         }
                     } else if let Some(value) = ui.get_widget_value("CodeEdit") {
                         if let Some(code) = value.to_string() {
-                            // Compile the code to test for errors.
-                            let ri = rusterix::RegionInstance::new(0);
-                            match ri.execute(&code) {
-                                Ok(_) => {
-                                    ctx.ui.send(TheEvent::SetStatusText(
-                                        TheId::empty(),
-                                        "Build OK".to_string(),
-                                    ));
-                                    // ui.set_widget_value(
-                                    //     "Build Result",
-                                    //     ctx,
-                                    //     TheValue::Text("Build OK".into()),
-                                    // );
-                                }
-                                Err(err) => {
-                                    ctx.ui.send(TheEvent::SetStatusText(
-                                        TheId::empty(),
-                                        format!("Error: {err}"),
-                                    ));
-                                    // ui.set_widget_value(
-                                    //     "Build Result",
-                                    //     ctx,
-                                    //     TheValue::Text(format!("Error: {err}")),
-                                    // );
-                                }
-                            }
+                            let status = if code.trim().is_empty() {
+                                "No script to build.".to_string()
+                            } else {
+                                "Build validation unavailable in current runtime.".to_string()
+                            };
+                            ctx.ui.send(TheEvent::SetStatusText(TheId::empty(), status));
                             if let Some(layout) = ui.get_hlayout("Game Tool Params") {
                                 layout.relayout(ctx);
                             }
