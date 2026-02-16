@@ -1,0 +1,11 @@
+[package]
+name = "material_system"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "material_system"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]

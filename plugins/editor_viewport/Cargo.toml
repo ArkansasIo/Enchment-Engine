@@ -1,0 +1,11 @@
+[package]
+name = "editor_viewport"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "editor_viewport"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]

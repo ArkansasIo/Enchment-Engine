@@ -1,0 +1,11 @@
+[package]
+name = "sprite_renderer"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "sprite_renderer"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]

@@ -1,0 +1,11 @@
+[package]
+name = "input_system"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "input_system"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]

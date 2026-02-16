@@ -94,12 +94,14 @@ pub struct Editor {
 
     build_values: ValueContainer,
 
+    // Theme and layout system
+    theme_settings: crate::theme::ThemeSettings,
+
     // Title page and state
     show_title_page: bool,
     show_settings: bool,
     show_options: bool,
     show_game_test: bool,
-}
 }
 
 impl Editor {
@@ -123,6 +125,7 @@ impl TheTrait for Editor {
     where
         Self: Sized,
     {
+        println!("[DEBUG] Editor::new() called");
         let mut project = Project::new();
         if let Some(bytes) = crate::Embedded::get("toml/config.toml") {
             if let Ok(source) = std::str::from_utf8(bytes.data.as_ref()) {
@@ -138,13 +141,13 @@ impl TheTrait for Editor {
             feature = "self-update",
             not(target_os = "macos")
         ))]
-        let self_updater = SelfUpdater::new("markusmoenig", "Eldiron", "eldiron-creator");
+        let self_updater = SelfUpdater::new("markusmoenig", "Encheament", "encheament-engine");
         #[cfg(all(
             not(target_arch = "wasm32"),
             feature = "self-update",
             target_os = "macos"
         ))]
-        let self_updater = SelfUpdater::new("markusmoenig", "Eldiron", "Eldiron-Creator.app");
+        let self_updater = SelfUpdater::new("markusmoenig", "Encheament", "Encheament-Engine.app");
 
         Self {
             project,
@@ -168,6 +171,8 @@ impl TheTrait for Editor {
             update_counter: 0,
 
             build_values: ValueContainer::default(),
+
+            theme_settings: crate::theme::ThemeSettings::new(),
 
             show_title_page: true,
             show_settings: false,
@@ -194,7 +199,7 @@ impl TheTrait for Editor {
     }
 
     fn window_title(&self) -> String {
-        "Eldiron Creator".to_string()
+        "Encheament Engine".to_string()
     }
 
     fn target_fps(&self) -> f64 {
@@ -239,93 +244,85 @@ impl TheTrait for Editor {
             let mut title_canvas = TheCanvas::new();
             let mut vlayout = TheVLayout::new(TheId::named("TitlePageVLayout"));
             vlayout.set_margin(Vec4::new(40, 40, 40, 40));
-            vlayout.set_spacing(30);
+            vlayout.set_padding(30);
 
             // Logo/Title
             let mut logo = TheText::new(TheId::named("LogoText"));
-            logo.set_text("Enchantmen Engine");
-            logo.set_font_size(56.0);
-            logo.set_color([255, 215, 64, 255]); // Gold
+            logo.set_text("Enchantmen Engine".to_string());
+            logo.set_text_size(56.0);
+            logo.set_text_color([255, 215, 64, 255]); // Gold
             vlayout.add_widget(Box::new(logo));
 
             let mut subtitle = TheText::new(TheId::named("SubtitleText"));
-            subtitle.set_text("AAA Fantasy MMORPG Toolkit");
-            subtitle.set_font_size(24.0);
-            subtitle.set_color([120, 200, 255, 255]); // Luminous blue
+            subtitle.set_text("AAA Fantasy MMORPG Toolkit".to_string());
+            subtitle.set_text_size(24.0);
+            subtitle.set_text_color([120, 200, 255, 255]); // Luminous blue
             vlayout.add_widget(Box::new(subtitle));
 
             // (Placeholder) Iconography and background art would be drawn here by a custom widget or image
             let mut art = TheText::new(TheId::named("ArtHint"));
-            art.set_text("[Art: Floating islands, citadel, dragon silhouettes, aurora, spellbook, crystals, knight/mage silhouette]");
-            art.set_font_size(16.0);
-            art.set_color([180, 180, 200, 255]);
+            art.set_text("[Art: Floating islands, citadel, dragon silhouettes, aurora, spellbook, crystals, knight/mage silhouette]".to_string());
+            art.set_text_size(16.0);
+            art.set_text_color([180, 180, 200, 255]);
             vlayout.add_widget(Box::new(art));
 
             // Menu Buttons (bottom center)
-            let mut menu_layout = TheHLayout::new(TheId::named("MenuLayout"));
-            menu_layout.set_spacing(24);
+            // Flatten menu buttons directly into the vertical layout
+            let mut start_btn = TheTraybarButton::new(TheId::named("StartGameEngine"));
+            start_btn.set_text("▶ START".to_string());
+            vlayout.add_widget(Box::new(start_btn));
 
-            let mut start_btn = TheButton::new(TheId::named("StartGameEngine"));
-            start_btn.set_text("▶ START");
-            menu_layout.add_widget(Box::new(start_btn));
+            let mut settings_btn = TheTraybarButton::new(TheId::named("Settings"));
+            settings_btn.set_text("⚙ SETTINGS".to_string());
+            vlayout.add_widget(Box::new(settings_btn));
 
-            let mut settings_btn = TheButton::new(TheId::named("Settings"));
-            settings_btn.set_text("⚙ SETTINGS");
-            menu_layout.add_widget(Box::new(settings_btn));
-
-            let mut exit_btn = TheButton::new(TheId::named("Exit"));
-            exit_btn.set_text("❌ EXIT");
-            menu_layout.add_widget(Box::new(exit_btn));
+            let mut exit_btn = TheTraybarButton::new(TheId::named("Exit"));
+            exit_btn.set_text("❌ EXIT".to_string());
+            vlayout.add_widget(Box::new(exit_btn));
 
             // Optional: Server Select, Continue, Credits, Engine Tools
-            let mut dev_btn = TheButton::new(TheId::named("EngineTools"));
-            dev_btn.set_text("Engine Tools");
-            menu_layout.add_widget(Box::new(dev_btn));
-
-            vlayout.add_widget(Box::new(menu_layout));
+            let mut dev_btn = TheTraybarButton::new(TheId::named("EngineTools"));
+            dev_btn.set_text("Engine Tools".to_string());
+            vlayout.add_widget(Box::new(dev_btn));
 
             title_canvas.set_layout(vlayout);
             ui.canvas.set_center(title_canvas);
 
-            // Handle button events
-            if let Some(ev) = ui.take_event() {
-                if let TheEvent::StateChanged(id, TheWidgetState::Clicked) = ev {
-                    match id.name.as_str() {
-                        "StartGameEngine" => self.show_title_page = false,
-                        "Settings" => self.show_settings = true,
-                        "Exit" => std::process::exit(0),
-                        "EngineTools" => {
-                            self.show_title_page = false;
-                        },
-                        _ => {}
-                    }
-                }
-            }
-
-            // Show settings/options/game test dialogs if needed
-            if self.show_settings {
-                let mut settings_canvas = TheCanvas::new();
-                let mut vlayout = TheVLayout::new(TheId::named("SettingsVLayout"));
-                vlayout.set_margin(Vec4::new(20, 20, 20, 20));
-                let mut label = TheText::new(TheId::named("SettingsLabel"));
-                label.set_text("Settings (stub)");
-                vlayout.add_widget(Box::new(label));
-                let mut close_btn = TheButton::new(TheId::named("CloseSettings"));
-                close_btn.set_text("Close");
-                vlayout.add_widget(Box::new(close_btn));
-                settings_canvas.set_layout(vlayout);
-                ui.show_dialog("Settings", settings_canvas, vec![TheDialogButtonRole::Accept], ctx);
-                if let Some(ev) = ui.take_event() {
-                    if let TheEvent::StateChanged(id, TheWidgetState::Clicked) = ev {
-                        if id.name == "CloseSettings" {
-                            self.show_settings = false;
-                        }
-                    }
-                }
-            }
-            // (Options, Game Test, etc. can be added similarly)
-            return;
+            // Handle button events using the public event processing API
+            ui.process_events(ctx);
+            // If your framework provides a public way to get the last event, handle it here
+            // Otherwise, event handling may need to be moved elsewhere (e.g., via callback or polling)
+            // For now, this is a placeholder for event handling logic
         }
+        // Show settings/options/game test dialogs if needed
+            if self.show_settings {
+                // --- Modular Theme/Layout Settings Integration ---
+                // Use egui for theme/layout settings if available, or adapt to your UI system
+                #[cfg(feature = "egui")] // If using egui
+                egui::Window::new("Theme & Layout Settings").show(ctx.egui_ctx(), |ui| {
+                    self.theme_settings.show_theme_settings(ui);
+                    self.theme_settings.show_layout_settings(ui);
+                });
+                #[cfg(not(feature = "egui"))]
+                {
+                    let mut settings_canvas = TheCanvas::new();
+                    let mut vlayout = TheVLayout::new(TheId::named("SettingsVLayout"));
+                    vlayout.set_margin(Vec4::new(20, 20, 20, 20));
+                    let mut label = TheText::new(TheId::named("SettingsLabel"));
+                    label.set_text("Settings".to_string());
+                    vlayout.add_widget(Box::new(label));
+                    // Theme/skin/layout options (custom widget or dropdowns)
+                    // Example: call a method to add theme/layout widgets to vlayout
+                    // self.theme_settings.add_to_vlayout(&mut vlayout);
+                    let mut close_btn = TheTraybarButton::new(TheId::named("CloseSettings"));
+                    close_btn.set_text("Close".to_string());
+                    vlayout.add_widget(Box::new(close_btn));
+                    settings_canvas.set_layout(vlayout);
+                    ui.show_dialog("Settings", settings_canvas, vec![TheDialogButtonRole::Accept], ctx);
+                    ui.process_events(ctx);
+                }
+                return;
+            }
         RUSTERIX.write().unwrap().client.messages_font = ctx.ui.font.clone();
 
         // Embedded Icons
@@ -581,6 +578,10 @@ impl TheTrait for Editor {
         top_canvas.set_widget(menubar);
         top_canvas.set_layout(hlayout);
         ui.canvas.set_top(top_canvas);
+
+        // Apply theme to UI (egui integration)
+        #[cfg(feature = "egui")]
+        self.theme_settings.apply_theme(ctx.egui_ctx());
 
         // Sidebar
         self.sidebar.init_ui(ui, ctx, &mut self.server_ctx);

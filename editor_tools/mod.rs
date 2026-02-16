@@ -9,3 +9,4 @@ pub mod tilemap_tool;
 pub mod animation_editor;
 pub mod stat_curve_visualizer;
 pub mod save_export;
+pub mod seed_tool;

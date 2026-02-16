@@ -1,0 +1,11 @@
+[package]
+name = "pbr_lighting"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "pbr_lighting"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]

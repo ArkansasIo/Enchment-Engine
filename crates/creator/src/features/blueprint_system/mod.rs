@@ -18,4 +18,5 @@ pub fn launch_blueprint_editor() {
     println!("[MMORPG Feature Tools GUI available]");
     println!("Blueprint Visual Scripting Editor launched! (UI placeholder)");
     // TODO: Integrate with Eldiron UI and event system
+    println!("[STUB] Integration with Eldiron UI and event system is not yet implemented.");
 }

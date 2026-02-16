@@ -1,0 +1,11 @@
+[package]
+name = "core_runtime"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "core_runtime"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]

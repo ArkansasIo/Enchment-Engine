@@ -1,0 +1,11 @@
+[package]
+name = "inspector_hierarchy"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "inspector_hierarchy"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]

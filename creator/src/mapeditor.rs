@@ -1,3 +1,46 @@
+// --- ProceduralRules struct for integration ---
+use serde::{Deserialize, Serialize};
+use std::fs;
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ProceduralRules {
+    pub prefixes: Vec<String>,
+    pub suffixes: Vec<String>,
+    #[serde(rename = "rarityTable")]
+    pub rarity_table: Vec<RarityEntry>,
+    #[serde(rename = "eliteBonus")]
+    pub elite_bonus: EliteBonus,
+    #[serde(rename = "bossBonus")]
+    pub boss_bonus: BossBonus,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct RarityEntry {
+    pub rarity: String,
+    pub weight: f32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct EliteBonus {
+    pub rare: f32,
+    pub epic: f32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct BossBonus {
+    #[serde(rename = "guaranteedRarity")]
+    pub guaranteed_rarity: String,
+    #[serde(rename = "extraRolls")]
+    pub extra_rolls: u32,
+}
+
+impl ProceduralRules {
+    pub fn load_from_json() -> Option<Self> {
+        let data = fs::read_to_string("docs/assets/procedural_rules.json").ok()?;
+        serde_json::from_str(&data).ok()
+    }
+}
+
 use crate::editor::{EDITCAMERA, NODEEDITOR, RUSTERIX, SIDEBARMODE, UNDOMANAGER};
 use crate::prelude::*;
 use rusterix::{D3Camera, PixelSource, Value};
@@ -8,17 +51,46 @@ pub struct MapEditor {
 
     icon_normal_border_color: RGBA,
     icon_selected_border_color: RGBA,
+
+    // Procedural rules loaded from JSON
+    procedural_rules: Option<ProceduralRules>,
 }
 
 #[allow(clippy::new_without_default)]
 impl MapEditor {
     pub fn new() -> Self {
+        let procedural_rules = ProceduralRules::load_from_json();
         Self {
             curr_tile_uuid: None,
-
             icon_normal_border_color: [100, 100, 100, 255],
             icon_selected_border_color: [255, 255, 255, 255],
+            procedural_rules,
         }
+    }
+
+    /// Example: Generate a procedural name for a dungeon/room using rules
+    pub fn generate_procedural_name(&self) -> Option<String> {
+        use rand::seq::SliceRandom;
+        let rules = self.procedural_rules.as_ref()?;
+        let mut rng = rand::thread_rng();
+        let prefix = rules.prefixes.choose(&mut rng)?.clone();
+        let suffix = rules.suffixes.choose(&mut rng)?.clone();
+        Some(format!("{} {}", prefix, suffix))
+    }
+
+    /// Example: Pick a rarity based on weights from rules
+    pub fn pick_rarity(&self) -> Option<String> {
+        let rules = self.procedural_rules.as_ref()?;
+        let mut rng = rand::thread_rng();
+        let total_weight: f32 = rules.rarity_table.iter().map(|r| r.weight).sum();
+        let mut roll = rng.gen_range(0.0..total_weight);
+        for entry in &rules.rarity_table {
+            if roll < entry.weight {
+                return Some(entry.rarity.clone());
+            }
+            roll -= entry.weight;
+        }
+        None
     }
 
     pub fn init_ui(
@@ -180,6 +252,16 @@ impl MapEditor {
         center.bottom_is_expanding = true;
         // center.set_bottom(toolbar_canvas);
 
+        // Add a button to test procedural generation (for demonstration)
+        // In a real UI, this would be integrated into the dungeon/map gen workflow
+        /*
+        if let Some(name) = self.generate_procedural_name() {
+            println!("Generated procedural name: {}", name);
+        }
+        if let Some(rarity) = self.pick_rarity() {
+            println!("Picked rarity: {}", rarity);
+        }
+        */
         center
     }
 

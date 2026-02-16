@@ -280,27 +280,40 @@ impl FeatureToolGui {
     /// # Arguments
     /// * `ctx` - The egui context for rendering the UI.
     pub fn show(&mut self, ctx: &egui::Context) {
-        // Pixel Asset Tools Section
-        ui.separator();
-        ui.heading("Pixel Asset Tools");
-        ui.horizontal(|ui| {
-            if ui.button("Generate 8-bit Sprite Sheet").clicked() {
-                generate_8bit_sprite_sheet();
-            }
-            if ui.button("Export Logo Sprite Atlas").clicked() {
-                export_logo_sprite_atlas();
-            }
-            if ui.button("Animate Logo Glow").clicked() {
-                animate_logo_glow();
-            }
+        // Left vertical toolbar
+        egui::SidePanel::left("left_toolbar").show(ctx, |ui| {
+            ui.vertical(|ui| {
+                if ui.button("Custom Tool").clicked() {
+                    // TODO: Custom tool logic here
+                    println!("Custom Tool (left toolbar) clicked");
+                }
+            });
         });
-        ui.horizontal(|ui| {
-            if ui.button("Create Retro Bitmap Font").clicked() {
-                create_retro_bitmap_font();
-            }
-            if ui.button("Build Pixel UI Assets").clicked() {
-                build_pixel_ui_assets();
-            }
+
+        // Top horizontal toolbar
+        egui::TopBottomPanel::top("top_toolbar").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                if ui.button("Custom Tool").clicked() {
+                    // TODO: Custom tool logic here
+                    println!("Custom Tool (top toolbar) clicked");
+                }
+                // Existing pixel asset tools
+                if ui.button("Generate 8-bit Sprite Sheet").clicked() {
+                    generate_8bit_sprite_sheet();
+                }
+                if ui.button("Export Logo Sprite Atlas").clicked() {
+                    export_logo_sprite_atlas();
+                }
+                if ui.button("Animate Logo Glow").clicked() {
+                    animate_logo_glow();
+                }
+                if ui.button("Create Retro Bitmap Font").clicked() {
+                    create_retro_bitmap_font();
+                }
+                if ui.button("Build Pixel UI Assets").clicked() {
+                    build_pixel_ui_assets();
+                }
+            });
         });
 
         // API Tools Section

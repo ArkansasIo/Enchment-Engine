@@ -1,0 +1,11 @@
+[package]
+name = "gpu_profiler"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "gpu_profiler"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
