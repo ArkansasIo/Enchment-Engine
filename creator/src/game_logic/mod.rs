@@ -89,6 +89,70 @@ pub struct TownMapData {
     pub gates: Vec<usize>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FantasyMapSettings {
+    pub seed: u64,
+    pub world_name: String,
+    pub map_size: u32,
+    pub continent_count: u32,
+    pub countries_per_continent: u32,
+    pub towns_per_country: u32,
+    pub has_islands: bool,
+}
+
+impl Default for FantasyMapSettings {
+    fn default() -> Self {
+        Self {
+            seed: 1,
+            world_name: "Aetheria".to_string(),
+            map_size: 4096,
+            continent_count: 3,
+            countries_per_continent: 7,
+            towns_per_country: 4,
+            has_islands: true,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ContinentData {
+    pub id: usize,
+    pub name: String,
+    pub center: (f32, f32),
+    pub radius: f32,
+    pub climate: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CountryData {
+    pub id: usize,
+    pub continent_id: usize,
+    pub name: String,
+    pub center: (f32, f32),
+    pub population: u64,
+    pub wealth: f32,
+    pub danger: f32,
+    pub capital_name: String,
+    pub capital_town: TownMapData,
+    pub town_names: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CountryBorder {
+    pub a: usize,
+    pub b: usize,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FantasyWorldMapData {
+    pub seed: u64,
+    pub world_name: String,
+    pub map_size: u32,
+    pub continents: Vec<ContinentData>,
+    pub countries: Vec<CountryData>,
+    pub borders: Vec<CountryBorder>,
+}
+
 pub fn generate_town_map(settings: &TownGeneratorSettings) -> TownMapData {
     let key = town_settings_cache_key(settings);
     if let Ok(cache) = TOWN_GEN_CACHE.read()
@@ -158,6 +222,138 @@ pub fn generate_town_map(settings: &TownGeneratorSettings) -> TownMapData {
     }
 
     result
+}
+
+pub fn generate_fantasy_world_map(settings: &FantasyMapSettings) -> FantasyWorldMapData {
+    let mut rng = StdRng::seed_from_u64(settings.seed);
+    let center = settings.map_size as f32 * 0.5;
+    let continent_ring = center * 0.55;
+    let ccount = settings.continent_count.max(1);
+
+    let mut continents = Vec::new();
+    for i in 0..ccount {
+        let angle = (i as f32 / ccount as f32) * TAU + rng.random_range(-0.2f32..0.2f32);
+        let radial = continent_ring + rng.random_range(-center * 0.18..center * 0.18);
+        let cx = center + angle.cos() * radial;
+        let cy = center + angle.sin() * radial;
+        let radius = (settings.map_size as f32 * 0.10) + rng.random_range(80.0..260.0);
+        let climate = match rng.random_range(0..6) {
+            0 => "Temperate",
+            1 => "Arid",
+            2 => "Tropical",
+            3 => "Boreal",
+            4 => "Highland",
+            _ => "Mediterranean",
+        }
+        .to_string();
+
+        continents.push(ContinentData {
+            id: i as usize,
+            name: format!("Continent {}", i + 1),
+            center: (cx, cy),
+            radius,
+            climate,
+        });
+    }
+
+    let mut countries = Vec::new();
+    let mut country_id = 0usize;
+    let countries_per = settings.countries_per_continent.max(1);
+    let towns_per = settings.towns_per_country.max(1);
+
+    for c in &continents {
+        for i in 0..countries_per {
+            let angle = (i as f32 / countries_per as f32) * TAU + rng.random_range(-0.25..0.25);
+            let radial = c.radius * rng.random_range(0.35..0.95);
+            let x = c.center.0 + angle.cos() * radial;
+            let y = c.center.1 + angle.sin() * radial;
+            let wealth = rng.random_range(0.12f32..0.92f32);
+            let danger = rng.random_range(0.08f32..0.88f32);
+
+            let country_name = format!("Kingdom {}", country_id + 1);
+            let capital_name = format!("{} Capital", country_name);
+            let town_settings = TownGeneratorSettings {
+                seed: settings.seed ^ ((country_id as u64 + 1) * 0x9E37_79B9_7F4A_7C15),
+                town_name: capital_name.clone(),
+                size: 960 + rng.random_range(0..320),
+                rings: 3 + rng.random_range(0..3),
+                districts_per_ring: 5 + rng.random_range(0..4),
+                has_river: rng.random_bool(0.60),
+                has_walls: rng.random_bool(0.65),
+            };
+            let capital_town = generate_town_map(&town_settings);
+
+            let mut town_names = Vec::new();
+            for t in 0..towns_per {
+                town_names.push(format!("{} Town {}", country_name, t + 1));
+            }
+
+            countries.push(CountryData {
+                id: country_id,
+                continent_id: c.id,
+                name: country_name,
+                center: (x, y),
+                population: rng.random_range(120_000u64..3_500_000u64),
+                wealth,
+                danger,
+                capital_name,
+                capital_town,
+                town_names,
+            });
+            country_id += 1;
+        }
+    }
+
+    let mut borders = Vec::new();
+    for a in &countries {
+        let mut nearest = countries
+            .iter()
+            .filter(|b| b.id != a.id && b.continent_id == a.continent_id)
+            .map(|b| {
+                let dx = b.center.0 - a.center.0;
+                let dy = b.center.1 - a.center.1;
+                (b.id, dx * dx + dy * dy)
+            })
+            .collect::<Vec<_>>();
+        nearest.sort_by(|x, y| x.1.partial_cmp(&y.1).unwrap_or(std::cmp::Ordering::Equal));
+        for (b, _) in nearest.into_iter().take(2) {
+            let (x, y) = if a.id < b { (a.id, b) } else { (b, a.id) };
+            if !borders.iter().any(|e| e.a == x && e.b == y) {
+                borders.push(CountryBorder { a: x, b: y });
+            }
+        }
+    }
+
+    if settings.has_islands {
+        // Slightly increase edge variety by connecting a few random inter-continent lanes.
+        for _ in 0..(ccount as usize).min(4) {
+            if countries.len() < 2 {
+                break;
+            }
+            let a = rng.random_range(0..countries.len());
+            let b = rng.random_range(0..countries.len());
+            if a == b || countries[a].continent_id == countries[b].continent_id {
+                continue;
+            }
+            let (x, y) = if countries[a].id < countries[b].id {
+                (countries[a].id, countries[b].id)
+            } else {
+                (countries[b].id, countries[a].id)
+            };
+            if !borders.iter().any(|e| e.a == x && e.b == y) {
+                borders.push(CountryBorder { a: x, b: y });
+            }
+        }
+    }
+
+    FantasyWorldMapData {
+        seed: settings.seed,
+        world_name: settings.world_name.clone(),
+        map_size: settings.map_size,
+        continents,
+        countries,
+        borders,
+    }
 }
 
 fn town_settings_cache_key(settings: &TownGeneratorSettings) -> String {
@@ -404,5 +600,44 @@ mod tests {
         let b = generate_town_map(&s2);
         assert_ne!(a.seed, b.seed);
         assert_ne!(a.districts[0].center, b.districts[0].center);
+    }
+
+    #[test]
+    fn fantasy_world_generation_is_deterministic() {
+        let settings = FantasyMapSettings {
+            seed: 444,
+            world_name: "DetWorld".to_string(),
+            map_size: 4096,
+            continent_count: 3,
+            countries_per_continent: 5,
+            towns_per_country: 4,
+            has_islands: true,
+        };
+        let a = generate_fantasy_world_map(&settings);
+        let b = generate_fantasy_world_map(&settings);
+        assert_eq!(
+            serde_json::to_string(&a).unwrap(),
+            serde_json::to_string(&b).unwrap()
+        );
+    }
+
+    #[test]
+    fn fantasy_world_generation_has_expected_counts() {
+        let settings = FantasyMapSettings {
+            seed: 999,
+            world_name: "CountWorld".to_string(),
+            map_size: 3072,
+            continent_count: 2,
+            countries_per_continent: 6,
+            towns_per_country: 3,
+            has_islands: false,
+        };
+        let data = generate_fantasy_world_map(&settings);
+        assert_eq!(data.continents.len(), 2);
+        assert_eq!(data.countries.len(), 12);
+        assert!(data
+            .countries
+            .iter()
+            .all(|c| c.town_names.len() == settings.towns_per_country as usize));
     }
 }

@@ -74,7 +74,7 @@ pub static SHADERBUFFER: LazyLock<RwLock<TheRGBABuffer>> =
 const LEFT_ICON_BAR_WIDTH: i32 = 72;
 const LEFT_TOOL_NAMES_WIDTH: i32 = 360;
 const LEFT_TOOL_TEXT_WIDTH: i32 = 230;
-const RIGHT_ICON_BAR_WIDTH: i32 = 56;
+const RIGHT_ICON_BAR_WIDTH: i32 = 148;
 const RIGHT_SETTINGS_WIDTH: i32 = 320;
 
 pub struct Editor {
@@ -137,8 +137,15 @@ pub struct Editor {
     mmorpg_include_mage: bool,
     mmorpg_include_cleric: bool,
     mmorpg_include_rogue: bool,
+    fantasy_world_name: String,
+    fantasy_world_seed: u64,
+    fantasy_continent_count: i32,
+    fantasy_countries_per_continent: i32,
+    fantasy_towns_per_country: i32,
+    fantasy_has_islands: bool,
     last_generated_town: Option<crate::game_logic::TownMapData>,
     last_generated_mmorpg: Option<crate::game_logic::StarterRpgMmorpgConfig>,
+    last_generated_fantasy_world: Option<crate::game_logic::FantasyWorldMapData>,
 }
 
 
@@ -554,50 +561,55 @@ impl Editor {
         right_tool_layout.set_margin(Vec4::new(2, 2, 2, 2));
         right_tool_layout.set_padding(1);
 
-        let mut add_quick_button = |id: &str, icon: &str, status: &str| {
-            let mut button = TheMenubarButton::new(TheId::named(id));
+        let mut add_quick_button = |id: &str, icon: &str, label: &str, status: &str| {
+            let mut button = TheTraybarButton::new(TheId::named(id));
             button.set_icon_name(icon.to_string());
+            button.set_text(label.to_string());
             button.set_status_text(status);
             right_tool_layout.add_widget(Box::new(button));
         };
 
-        add_quick_button("QuickGuiOpen", "icon_role_load", "Open project");
-        add_quick_button("QuickGuiSave", "icon_role_save", "Save project");
-        add_quick_button("QuickGuiUndo", "icon_role_undo", "Undo");
-        add_quick_button("QuickGuiRedo", "icon_role_redo", "Redo");
-        add_quick_button("QuickGuiPlay", "play", "Run game");
-        add_quick_button("QuickGuiPause", "play-pause", "Pause game");
-        add_quick_button("QuickGuiStop", "stop-fill", "Stop game");
-        add_quick_button("QuickGuiHelp", "question-mark", "Open help");
+        add_quick_button("QuickGuiOpen", "icon_role_load", "Open", "Open project");
+        add_quick_button("QuickGuiSave", "icon_role_save", "Save", "Save project");
+        add_quick_button("QuickGuiUndo", "icon_role_undo", "Undo", "Undo");
+        add_quick_button("QuickGuiRedo", "icon_role_redo", "Redo", "Redo");
+        add_quick_button("QuickGuiPlay", "play", "Play", "Run game");
+        add_quick_button("QuickGuiPause", "play-pause", "Pause", "Pause game");
+        add_quick_button("QuickGuiStop", "stop-fill", "Stop", "Stop game");
+        add_quick_button("QuickGuiHelp", "question-mark", "Help", "Open help");
         add_quick_button(
             "QuickWindowContentBrowser",
             "folder",
+            "Content",
             "Open Content Browser panel",
         );
         add_quick_button(
             "QuickWindowOutliner",
             "list",
+            "Outliner",
             "Open World Outliner panel",
         );
-        add_quick_button("QuickWindowDetails", "gear", "Open Details panel");
-        add_quick_button("QuickWindowLog", "file-text", "Open Output Log panel");
-        add_quick_button("QuickWindowBlueprint", "code", "Open Blueprint panel");
+        add_quick_button("QuickWindowDetails", "gear", "Details", "Open Details panel");
+        add_quick_button("QuickWindowLog", "file-text", "Log", "Open Output Log panel");
+        add_quick_button("QuickWindowBlueprint", "code", "Blueprint", "Open Blueprint panel");
         add_quick_button(
             "QuickMmorpgBuilder",
             "list",
+            "MMO UI",
             "Open RPG/MMORPG builder summary",
         );
         add_quick_button(
             "QuickMmorpgGenerate",
             "wand-magic-sparkles",
+            "MMO Gen",
             "Generate RPG/MMORPG from builder inputs",
         );
-        add_quick_button("QuickThemeDark", "dark_tabbar_selected", "Dark theme preset");
-        add_quick_button("QuickThemeLight", "dark_tabbar_hover", "Light theme preset");
-        add_quick_button("QuickThemeSlate", "dark_tabbar_normal", "Slate theme preset");
-        add_quick_button("QuickOptSnap", "selection", "Toggle snap-to-grid");
-        add_quick_button("QuickOptGrid", "square", "Toggle grid visibility");
-        add_quick_button("QuickOptGizmos", "transform", "Toggle gizmos");
+        add_quick_button("QuickThemeDark", "dark_tabbar_selected", "Dark", "Dark theme preset");
+        add_quick_button("QuickThemeLight", "dark_tabbar_hover", "Light", "Light theme preset");
+        add_quick_button("QuickThemeSlate", "dark_tabbar_normal", "Slate", "Slate theme preset");
+        add_quick_button("QuickOptSnap", "selection", "Snap", "Toggle snap-to-grid");
+        add_quick_button("QuickOptGrid", "square", "Grid", "Toggle grid visibility");
+        add_quick_button("QuickOptGizmos", "transform", "Gizmos", "Toggle gizmos");
 
         if let Ok(toollist) = TOOLLIST.read() {
             for tool in &toollist.game_tools {
@@ -743,6 +755,48 @@ impl Editor {
         let mut spawner_btn = TheTraybarButton::new(TheId::named("TownSpawnPoiBtn"));
         spawner_btn.set_text("Spawn POIs".to_string());
         right_settings_layout.add_pair("Town / MMO".to_string(), Box::new(spawner_btn));
+
+        let mut fantasy_world_name = TheTextLineEdit::new(TheId::named("FantasyWorldNameEdit"));
+        fantasy_world_name.set_value(TheValue::Text(self.fantasy_world_name.clone()));
+        fantasy_world_name.set_continuous(true);
+        right_settings_layout.add_pair("Fantasy / World Name".to_string(), Box::new(fantasy_world_name));
+
+        let mut fantasy_world_seed = TheTextLineEdit::new(TheId::named("FantasyWorldSeedEdit"));
+        fantasy_world_seed.set_value(TheValue::Int(self.fantasy_world_seed as i32));
+        fantasy_world_seed.set_range(TheValue::RangeI32(0..=i32::MAX));
+        fantasy_world_seed.set_continuous(true);
+        right_settings_layout.add_pair("Fantasy / Seed".to_string(), Box::new(fantasy_world_seed));
+
+        let mut fantasy_continents = TheTextLineEdit::new(TheId::named("FantasyContinentCountEdit"));
+        fantasy_continents.set_value(TheValue::Int(self.fantasy_continent_count));
+        fantasy_continents.set_range(TheValue::RangeI32(1..=12));
+        fantasy_continents.set_continuous(true);
+        right_settings_layout.add_pair("Fantasy / Continents".to_string(), Box::new(fantasy_continents));
+
+        let mut fantasy_countries =
+            TheTextLineEdit::new(TheId::named("FantasyCountriesPerContinentEdit"));
+        fantasy_countries.set_value(TheValue::Int(self.fantasy_countries_per_continent));
+        fantasy_countries.set_range(TheValue::RangeI32(1..=24));
+        fantasy_countries.set_continuous(true);
+        right_settings_layout.add_pair(
+            "Fantasy / Countries/Continent".to_string(),
+            Box::new(fantasy_countries),
+        );
+
+        let mut fantasy_towns = TheTextLineEdit::new(TheId::named("FantasyTownsPerCountryEdit"));
+        fantasy_towns.set_value(TheValue::Int(self.fantasy_towns_per_country));
+        fantasy_towns.set_range(TheValue::RangeI32(1..=20));
+        fantasy_towns.set_continuous(true);
+        right_settings_layout.add_pair("Fantasy / Towns/Country".to_string(), Box::new(fantasy_towns));
+
+        let mut fantasy_islands = TheCheckButton::new(TheId::named("FantasyHasIslandsCB"));
+        fantasy_islands.set_value(TheValue::Bool(self.fantasy_has_islands));
+        right_settings_layout.add_pair("Fantasy / Islands".to_string(), Box::new(fantasy_islands));
+
+        let mut fantasy_generate_btn =
+            TheTraybarButton::new(TheId::named("FantasyWorldGenerateBtn"));
+        fantasy_generate_btn.set_text("Generate Fantasy World".to_string());
+        right_settings_layout.add_pair("Fantasy / Action".to_string(), Box::new(fantasy_generate_btn));
 
         let mut xp_rate_edit = TheTextLineEdit::new(TheId::named("MmorpgXpRateEdit"));
         xp_rate_edit.set_value(TheValue::Float(self.mmorpg_xp_rate));
@@ -1057,6 +1111,12 @@ impl Editor {
             "Generate town systems from left toolbar",
         );
         add_left_action(
+            "Fantasy / Generate World",
+            "LeftAction::MenuTools::GenerateFantasyWorld",
+            "globe",
+            "Generate continents, countries, and capitals",
+        );
+        add_left_action(
             "Town / Bake To Map",
             "LeftAction::MenuTown::BakeMap",
             "map",
@@ -1279,6 +1339,30 @@ impl Editor {
                 "mmorpg_include_rogue".to_string(),
                 toml::Value::Boolean(self.mmorpg_include_rogue),
             );
+            layout.insert(
+                "fantasy_world_name".to_string(),
+                toml::Value::String(self.fantasy_world_name.clone()),
+            );
+            layout.insert(
+                "fantasy_world_seed".to_string(),
+                toml::Value::Integer(self.fantasy_world_seed as i64),
+            );
+            layout.insert(
+                "fantasy_continent_count".to_string(),
+                toml::Value::Integer(self.fantasy_continent_count as i64),
+            );
+            layout.insert(
+                "fantasy_countries_per_continent".to_string(),
+                toml::Value::Integer(self.fantasy_countries_per_continent as i64),
+            );
+            layout.insert(
+                "fantasy_towns_per_country".to_string(),
+                toml::Value::Integer(self.fantasy_towns_per_country as i64),
+            );
+            layout.insert(
+                "fantasy_has_islands".to_string(),
+                toml::Value::Boolean(self.fantasy_has_islands),
+            );
         }
 
         if let Ok(config_text) = toml::to_string_pretty(&root_value) {
@@ -1428,6 +1512,39 @@ impl Editor {
             {
                 self.mmorpg_include_rogue = v;
             }
+            if let Some(v) = layout.get("fantasy_world_name").and_then(toml::Value::as_str) {
+                self.fantasy_world_name = v.to_string();
+            }
+            if let Some(v) = layout
+                .get("fantasy_world_seed")
+                .and_then(toml::Value::as_integer)
+            {
+                self.fantasy_world_seed = v.max(0) as u64;
+            }
+            if let Some(v) = layout
+                .get("fantasy_continent_count")
+                .and_then(toml::Value::as_integer)
+            {
+                self.fantasy_continent_count = (v as i32).clamp(1, 12);
+            }
+            if let Some(v) = layout
+                .get("fantasy_countries_per_continent")
+                .and_then(toml::Value::as_integer)
+            {
+                self.fantasy_countries_per_continent = (v as i32).clamp(1, 24);
+            }
+            if let Some(v) = layout
+                .get("fantasy_towns_per_country")
+                .and_then(toml::Value::as_integer)
+            {
+                self.fantasy_towns_per_country = (v as i32).clamp(1, 20);
+            }
+            if let Some(v) = layout
+                .get("fantasy_has_islands")
+                .and_then(toml::Value::as_bool)
+            {
+                self.fantasy_has_islands = v;
+            }
         }
     }
 
@@ -1524,6 +1641,36 @@ impl Editor {
             "MmorpgClassRogueCB",
             ctx,
             TheValue::Bool(self.mmorpg_include_rogue),
+        );
+        ui.set_widget_value(
+            "FantasyWorldNameEdit",
+            ctx,
+            TheValue::Text(self.fantasy_world_name.clone()),
+        );
+        ui.set_widget_value(
+            "FantasyWorldSeedEdit",
+            ctx,
+            TheValue::Int(self.fantasy_world_seed as i32),
+        );
+        ui.set_widget_value(
+            "FantasyContinentCountEdit",
+            ctx,
+            TheValue::Int(self.fantasy_continent_count),
+        );
+        ui.set_widget_value(
+            "FantasyCountriesPerContinentEdit",
+            ctx,
+            TheValue::Int(self.fantasy_countries_per_continent),
+        );
+        ui.set_widget_value(
+            "FantasyTownsPerCountryEdit",
+            ctx,
+            TheValue::Int(self.fantasy_towns_per_country),
+        );
+        ui.set_widget_value(
+            "FantasyHasIslandsCB",
+            ctx,
+            TheValue::Bool(self.fantasy_has_islands),
         );
 
         let theme_index = match self.theme_preset.as_str() {
@@ -1822,6 +1969,110 @@ impl Editor {
             TheId::empty(),
             "RPG/MMORPG systems created and stored in project config.".to_string(),
         ));
+    }
+
+    fn generate_fantasy_world_system_data(&mut self, ui: &mut TheUI, ctx: &mut TheContext) {
+        let seed = if self.fantasy_world_seed == 0 {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(1)
+        } else {
+            self.fantasy_world_seed
+        };
+        self.fantasy_world_seed = seed;
+
+        let world_name = if self.fantasy_world_name.trim().is_empty() {
+            "Aetheria".to_string()
+        } else {
+            self.fantasy_world_name.trim().to_string()
+        };
+        self.fantasy_world_name = world_name.clone();
+
+        let settings = crate::game_logic::FantasyMapSettings {
+            seed,
+            world_name,
+            map_size: 4096,
+            continent_count: self.fantasy_continent_count.clamp(1, 12) as u32,
+            countries_per_continent: self.fantasy_countries_per_continent.clamp(1, 24) as u32,
+            towns_per_country: self.fantasy_towns_per_country.clamp(1, 20) as u32,
+            has_islands: self.fantasy_has_islands,
+        };
+        let generated = crate::game_logic::generate_fantasy_world_map(&settings);
+        self.last_generated_fantasy_world = Some(generated.clone());
+
+        let payload = serde_json::to_string_pretty(&generated).unwrap_or_else(|_| "{}".to_string());
+        let mut root_value = toml::from_str::<toml::Value>(&self.project.config)
+            .unwrap_or_else(|_| toml::Value::Table(toml::Table::new()));
+        let root = if let Some(root) = root_value.as_table_mut() {
+            root
+        } else {
+            root_value = toml::Value::Table(toml::Table::new());
+            root_value.as_table_mut().unwrap()
+        };
+        let entry = root
+            .entry("fantasy_world_generator".to_string())
+            .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+        if let Some(tbl) = entry.as_table_mut() {
+            tbl.insert("seed".to_string(), toml::Value::Integer(generated.seed as i64));
+            tbl.insert(
+                "world_name".to_string(),
+                toml::Value::String(generated.world_name.clone()),
+            );
+            tbl.insert(
+                "continent_count".to_string(),
+                toml::Value::Integer(generated.continents.len() as i64),
+            );
+            tbl.insert(
+                "country_count".to_string(),
+                toml::Value::Integer(generated.countries.len() as i64),
+            );
+            tbl.insert(
+                "border_count".to_string(),
+                toml::Value::Integer(generated.borders.len() as i64),
+            );
+            tbl.insert("data".to_string(), toml::Value::String(payload));
+        }
+        if let Ok(config_text) = toml::to_string_pretty(&root_value) {
+            self.project.config = config_text;
+        }
+
+        let mut canvas = TheCanvas::new();
+        canvas.limiter_mut().set_max_size(Vec2::new(680, 280));
+        let mut layout = TheTextLayout::new(TheId::named("Fantasy World Generator Result"));
+        layout.set_margin(Vec4::new(12, 12, 12, 12));
+        layout.set_padding(6);
+        let mut txt = TheText::new(TheId::named("Fantasy World Generator Result Text"));
+        txt.set_text(format!(
+            "Fantasy world generated (TownGeneratorOS-style world + town layering).\n\
+             World: {}\n\
+             Seed: {}\n\
+             Continents: {}\n\
+             Countries: {}\n\
+             Borders: {}\n\
+             Capital Towns: {}\n\
+             Config key: [fantasy_world_generator]",
+            generated.world_name,
+            generated.seed,
+            generated.continents.len(),
+            generated.countries.len(),
+            generated.borders.len(),
+            generated.countries.len()
+        ));
+        layout.add_pair("".to_string(), Box::new(txt));
+        canvas.set_layout(layout);
+        ui.show_dialog(
+            "Fantasy World Generator",
+            canvas,
+            vec![TheDialogButtonRole::Accept],
+            ctx,
+        );
+
+        ctx.ui.send(TheEvent::SetStatusText(
+            TheId::empty(),
+            "Fantasy world generator data created and stored in project config.".to_string(),
+        ));
+        self.persist_workspace_settings_to_project_config();
     }
 
     fn apply_town_overlay_visibility(&mut self) {
@@ -2251,8 +2502,15 @@ impl TheTrait for Editor {
             mmorpg_include_mage: true,
             mmorpg_include_cleric: true,
             mmorpg_include_rogue: true,
+            fantasy_world_name: "Aetheria".to_string(),
+            fantasy_world_seed: 0,
+            fantasy_continent_count: 3,
+            fantasy_countries_per_continent: 7,
+            fantasy_towns_per_country: 4,
+            fantasy_has_islands: true,
             last_generated_town: None,
             last_generated_mmorpg: None,
+            last_generated_fantasy_world: None,
         }
     }
 
@@ -2499,6 +2757,10 @@ impl TheTrait for Editor {
             "Generate Town (Watabou-style)".to_string(),
             TheId::named("MenuTools::GenerateTown"),
         ));
+        tools_menu.add(TheContextMenuItem::new(
+            "Generate Fantasy World (Continent/Country)".to_string(),
+            TheId::named("MenuTools::GenerateFantasyWorld"),
+        ));
         let mut town_preset_menu = TheContextMenu::named("Town Presets".to_string());
         town_preset_menu.add(TheContextMenuItem::new(
             "Small Town".to_string(),
@@ -2688,6 +2950,17 @@ impl TheTrait for Editor {
                 button.set_has_state(true);
                 button.set_status_text(&format!("Activate {}", tool.info()));
                 top_quick_layout.add_widget(Box::new(button));
+
+                let tool_name = tool
+                    .id()
+                    .name
+                    .strip_suffix(" Tool")
+                    .unwrap_or(&tool.id().name)
+                    .to_string();
+                let mut name_text =
+                    TheText::new(TheId::named(&format!("TopToolLabel::{}", tool.id().name)));
+                name_text.set_text(tool_name);
+                top_quick_layout.add_widget(Box::new(name_text));
             }
         }
         top_quick_canvas.set_layout(top_quick_layout);
@@ -3353,6 +3626,9 @@ impl TheTrait for Editor {
                         ));
                     } else if item_id.name == "MenuTools::GenerateTown" {
                         self.generate_town_system_data(ui, ctx);
+                        redraw = true;
+                    } else if item_id.name == "MenuTools::GenerateFantasyWorld" {
+                        self.generate_fantasy_world_system_data(ui, ctx);
                         redraw = true;
                     } else if item_id.name == "MenuTownPreset::SmallTown" {
                         self.towngen_preset = "Small Town".to_string();
@@ -4413,6 +4689,9 @@ impl TheTrait for Editor {
                             };
                             self.generate_town_system_data_with_seed(ui, ctx, seed);
                             redraw = true;
+                        } else if id.name == "FantasyWorldGenerateBtn" {
+                            self.generate_fantasy_world_system_data(ui, ctx);
+                            redraw = true;
                         } else if id.name == "TownRegenerateBtn" {
                             let seed = if self.towngen_last_seed == 0 {
                                 std::time::SystemTime::now()
@@ -5131,6 +5410,36 @@ impl TheTrait for Editor {
                         if let TheValue::Bool(v) = value {
                             self.overlay_show_town_landmarks = v;
                             self.apply_town_overlay_visibility();
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "FantasyWorldNameEdit" {
+                        if let TheValue::Text(v) = value {
+                            self.fantasy_world_name = v.clone();
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "FantasyWorldSeedEdit" {
+                        if let Some(v) = value.to_i32() {
+                            self.fantasy_world_seed = v.max(0) as u64;
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "FantasyContinentCountEdit" {
+                        if let Some(v) = value.to_i32() {
+                            self.fantasy_continent_count = v.clamp(1, 12);
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "FantasyCountriesPerContinentEdit" {
+                        if let Some(v) = value.to_i32() {
+                            self.fantasy_countries_per_continent = v.clamp(1, 24);
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "FantasyTownsPerCountryEdit" {
+                        if let Some(v) = value.to_i32() {
+                            self.fantasy_towns_per_country = v.clamp(1, 20);
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "FantasyHasIslandsCB" {
+                        if let TheValue::Bool(v) = value {
+                            self.fantasy_has_islands = v;
                             workspace_prefs_dirty = true;
                         }
                     } else if id.name == "MmorpgXpRateEdit" {
