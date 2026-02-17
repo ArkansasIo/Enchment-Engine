@@ -13,6 +13,14 @@ pub enum CharacterClass {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum CharacterArchetype {
+    Tank,
+    Damage,
+    Healer,
+    Support,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum DamageType {
     Physical,
     Fire,
@@ -154,9 +162,63 @@ pub struct WorldState {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RaceTemplate {
+    pub race_id: String,
+    pub name: String,
+    pub hp_bonus: i32,
+    pub mp_bonus: i32,
+    pub attack_bonus: i32,
+    pub defense_bonus: i32,
+    pub spell_bonus: i32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ClassTemplate {
+    pub class: CharacterClass,
+    pub archetype: CharacterArchetype,
+    pub base_stats: StatBlock,
+    pub starter_skill_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RpgMmorpgCreateInput {
+    pub world_name: String,
+    pub max_players_per_shard: u32,
+    pub starting_level: u32,
+    pub race_count: u32,
+    pub quest_count: u32,
+    pub skill_tier_count: u32,
+    pub include_warrior: bool,
+    pub include_ranger: bool,
+    pub include_mage: bool,
+    pub include_cleric: bool,
+    pub include_rogue: bool,
+}
+
+impl Default for RpgMmorpgCreateInput {
+    fn default() -> Self {
+        Self {
+            world_name: "Encheament Online".to_string(),
+            max_players_per_shard: 600,
+            starting_level: 1,
+            race_count: 4,
+            quest_count: 4,
+            skill_tier_count: 2,
+            include_warrior: true,
+            include_ranger: true,
+            include_mage: true,
+            include_cleric: true,
+            include_rogue: true,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StarterRpgMmorpgConfig {
     pub seed: u64,
     pub default_classes: Vec<CharacterClass>,
+    pub class_templates: Vec<ClassTemplate>,
+    pub race_templates: Vec<RaceTemplate>,
     pub starter_skills: Vec<Skill>,
     pub starter_quests: Vec<QuestTemplate>,
     pub starter_loot_table: Vec<LootTableEntry>,
@@ -365,7 +427,192 @@ pub fn can_accept_quest(profile: &CharacterProfile, quest: &QuestTemplate) -> bo
     profile.level >= quest.min_level
 }
 
+pub fn default_rpg_mmorpg_create_input(world_name: String) -> RpgMmorpgCreateInput {
+    RpgMmorpgCreateInput {
+        world_name,
+        ..RpgMmorpgCreateInput::default()
+    }
+}
+
 pub fn generate_starter_rpg_mmorpg_config(seed: u64, world_name: String) -> StarterRpgMmorpgConfig {
+    let input = default_rpg_mmorpg_create_input(world_name);
+    generate_starter_rpg_mmorpg_config_with_input(seed, &input)
+}
+
+pub fn generate_starter_rpg_mmorpg_config_with_input(
+    seed: u64,
+    input: &RpgMmorpgCreateInput,
+) -> StarterRpgMmorpgConfig {
+    let mut default_classes = Vec::new();
+    if input.include_warrior {
+        default_classes.push(CharacterClass::Warrior);
+    }
+    if input.include_ranger {
+        default_classes.push(CharacterClass::Ranger);
+    }
+    if input.include_mage {
+        default_classes.push(CharacterClass::Mage);
+    }
+    if input.include_cleric {
+        default_classes.push(CharacterClass::Cleric);
+    }
+    if input.include_rogue {
+        default_classes.push(CharacterClass::Rogue);
+    }
+    if default_classes.is_empty() {
+        default_classes.push(CharacterClass::Warrior);
+    }
+
+    let tier_count = input.skill_tier_count.clamp(1, 6);
+    let mut starter_skills = Vec::new();
+    for class in &default_classes {
+        for tier in 1..=tier_count {
+            let (name, damage_type, mana_cost, cooldown_ms, base_power) = match class {
+                CharacterClass::Warrior => (
+                    format!("Slash T{}", tier),
+                    DamageType::Physical,
+                    0,
+                    1450u64.saturating_sub(tier as u64 * 40),
+                    24 + tier as i32 * 7,
+                ),
+                CharacterClass::Ranger => (
+                    format!("Aimed Shot T{}", tier),
+                    DamageType::Physical,
+                    4 + tier as i32,
+                    1500u64.saturating_sub(tier as u64 * 35),
+                    22 + tier as i32 * 6,
+                ),
+                CharacterClass::Mage => (
+                    format!("Firebolt T{}", tier),
+                    DamageType::Fire,
+                    8 + tier as i32 * 2,
+                    1650u64.saturating_sub(tier as u64 * 30),
+                    26 + tier as i32 * 8,
+                ),
+                CharacterClass::Cleric => (
+                    format!("Smite T{}", tier),
+                    DamageType::Holy,
+                    7 + tier as i32 * 2,
+                    1700u64.saturating_sub(tier as u64 * 30),
+                    21 + tier as i32 * 6,
+                ),
+                CharacterClass::Rogue => (
+                    format!("Backstab T{}", tier),
+                    DamageType::Shadow,
+                    3 + tier as i32,
+                    1300u64.saturating_sub(tier as u64 * 35),
+                    23 + tier as i32 * 7,
+                ),
+            };
+
+            starter_skills.push(Skill {
+                id: format!("skill_{:?}_t{}", class, tier).to_lowercase(),
+                name,
+                class: class.clone(),
+                damage_type,
+                base_power,
+                mana_cost,
+                cooldown_ms,
+            });
+        }
+    }
+
+    let race_count = input.race_count.clamp(1, 12);
+    let mut race_templates = Vec::new();
+    for i in 0..race_count {
+        let idx = i + 1;
+        race_templates.push(RaceTemplate {
+            race_id: format!("race_{}", idx),
+            name: format!("Race {}", idx),
+            hp_bonus: (idx as i32 % 3) * 6,
+            mp_bonus: ((idx as i32 + 1) % 3) * 5,
+            attack_bonus: (idx as i32 % 2) * 2,
+            defense_bonus: ((idx as i32 + 1) % 2) * 2,
+            spell_bonus: ((idx as i32 + 2) % 3) * 2,
+        });
+    }
+
+    let class_templates = default_classes
+        .iter()
+        .map(|class| {
+            let (archetype, base_stats) = match class {
+                CharacterClass::Warrior => (
+                    CharacterArchetype::Tank,
+                    StatBlock {
+                        hp: 150,
+                        mp: 25,
+                        attack: 14,
+                        defense: 12,
+                        spell_power: 3,
+                        crit_chance: 0.08,
+                        haste: 0.05,
+                    },
+                ),
+                CharacterClass::Ranger => (
+                    CharacterArchetype::Damage,
+                    StatBlock {
+                        hp: 120,
+                        mp: 40,
+                        attack: 16,
+                        defense: 8,
+                        spell_power: 5,
+                        crit_chance: 0.12,
+                        haste: 0.08,
+                    },
+                ),
+                CharacterClass::Mage => (
+                    CharacterArchetype::Damage,
+                    StatBlock {
+                        hp: 95,
+                        mp: 120,
+                        attack: 7,
+                        defense: 5,
+                        spell_power: 19,
+                        crit_chance: 0.10,
+                        haste: 0.06,
+                    },
+                ),
+                CharacterClass::Cleric => (
+                    CharacterArchetype::Healer,
+                    StatBlock {
+                        hp: 110,
+                        mp: 105,
+                        attack: 9,
+                        defense: 9,
+                        spell_power: 15,
+                        crit_chance: 0.07,
+                        haste: 0.04,
+                    },
+                ),
+                CharacterClass::Rogue => (
+                    CharacterArchetype::Damage,
+                    StatBlock {
+                        hp: 105,
+                        mp: 45,
+                        attack: 18,
+                        defense: 7,
+                        spell_power: 4,
+                        crit_chance: 0.16,
+                        haste: 0.12,
+                    },
+                ),
+            };
+
+            let starter_skill_ids = starter_skills
+                .iter()
+                .filter(|s| s.class == *class)
+                .map(|s| s.id.clone())
+                .collect();
+
+            ClassTemplate {
+                class: class.clone(),
+                archetype,
+                base_stats,
+                starter_skill_ids,
+            }
+        })
+        .collect::<Vec<_>>();
+
     let starter_skills = vec![
         Skill {
             id: "skill_slash".to_string(),
@@ -454,11 +701,56 @@ pub fn generate_starter_rpg_mmorpg_config(seed: u64, world_name: String) -> Star
         },
     ];
 
+    let mut starter_quests = vec![
+        QuestTemplate {
+            quest_id: "q_start_hunt".to_string(),
+            title: "Culling the Wilds".to_string(),
+            min_level: input.starting_level.max(1),
+            objectives: vec![QuestObjective {
+                objective_id: "kill_wolf".to_string(),
+                description: "Defeat wolves near the village".to_string(),
+                required: 6,
+            }],
+            reward_xp: 220,
+            reward_gold: 35,
+        },
+        QuestTemplate {
+            quest_id: "q_supply_run".to_string(),
+            title: "Supply Run".to_string(),
+            min_level: input.starting_level.max(1),
+            objectives: vec![QuestObjective {
+                objective_id: "collect_herbs".to_string(),
+                description: "Collect healing herbs".to_string(),
+                required: 8,
+            }],
+            reward_xp: 180,
+            reward_gold: 25,
+        },
+    ];
+
+    let target_quest_count = input.quest_count.clamp(1, 64) as usize;
+    while starter_quests.len() < target_quest_count {
+        let n = starter_quests.len() + 1;
+        starter_quests.push(QuestTemplate {
+            quest_id: format!("q_dynamic_{}", n),
+            title: format!("Regional Contract {}", n),
+            min_level: input.starting_level.max(1) + ((n as u32) / 3),
+            objectives: vec![QuestObjective {
+                objective_id: format!("obj_dynamic_{}", n),
+                description: "Defeat roaming threats in nearby districts".to_string(),
+                required: 4 + (n as u32 % 6),
+            }],
+            reward_xp: 180 + n as u64 * 32,
+            reward_gold: 28 + n as u64 * 7,
+        });
+    }
+    starter_quests.truncate(target_quest_count);
+
     let world_state = WorldState {
-        world_name,
+        world_name: input.world_name.clone(),
         server_tick_ms: 100,
         world_time_ms: 0,
-        max_players_per_shard: 600,
+        max_players_per_shard: input.max_players_per_shard.clamp(10, 100_000),
         parties: Vec::new(),
         guilds: Vec::new(),
         events: vec![
@@ -481,16 +773,12 @@ pub fn generate_starter_rpg_mmorpg_config(seed: u64, world_name: String) -> Star
 
     StarterRpgMmorpgConfig {
         seed,
-        default_classes: vec![
-            CharacterClass::Warrior,
-            CharacterClass::Ranger,
-            CharacterClass::Mage,
-            CharacterClass::Cleric,
-            CharacterClass::Rogue,
-        ],
         starter_skills,
         starter_quests,
         starter_loot_table,
+        default_classes,
+        class_templates,
+        race_templates,
         world_state,
     }
 }
