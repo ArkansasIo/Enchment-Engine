@@ -780,4 +780,30 @@ mod tests {
             serde_json::to_string(&d2).unwrap()
         );
     }
+
+    #[test]
+    fn config_generation_respects_input_counts() {
+        let input = RpgMmorpgCreateInput {
+            world_name: "Test Realm".to_string(),
+            max_players_per_shard: 2048,
+            starting_level: 3,
+            race_count: 7,
+            quest_count: 9,
+            skill_tier_count: 3,
+            include_warrior: true,
+            include_ranger: false,
+            include_mage: true,
+            include_cleric: false,
+            include_rogue: false,
+        };
+
+        let cfg = generate_starter_rpg_mmorpg_config_with_input(77, &input);
+        assert_eq!(cfg.world_state.world_name, "Test Realm");
+        assert_eq!(cfg.world_state.max_players_per_shard, 2048);
+        assert_eq!(cfg.race_templates.len(), 7);
+        assert_eq!(cfg.starter_quests.len(), 9);
+        assert_eq!(cfg.default_classes.len(), 2);
+        assert!(cfg.default_classes.contains(&CharacterClass::Warrior));
+        assert!(cfg.default_classes.contains(&CharacterClass::Mage));
+    }
 }

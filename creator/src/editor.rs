@@ -414,6 +414,52 @@ impl Editor {
         crate::ide_panels::show_ide_panel_dialog(ui, ctx, kind, &snapshot);
     }
 
+    fn show_rpg_mmorpg_builder_dialog(&self, ui: &mut TheUI, ctx: &mut TheContext) {
+        let mut canvas = TheCanvas::new();
+        canvas.limiter_mut().set_max_size(Vec2::new(700, 360));
+
+        let mut layout = TheTextLayout::new(TheId::named("RpgMmorpg Builder Dialog"));
+        layout.set_margin(Vec4::new(12, 12, 12, 12));
+        layout.set_padding(6);
+
+        let mut txt = TheText::new(TheId::named("RpgMmorpg Builder Dialog Text"));
+        txt.set_text(format!(
+            "RPG/MMORPG Builder Inputs\n\
+             World: {}\n\
+             Max Players: {}\n\
+             Starting Level: {}\n\
+             Race Types: {}\n\
+             Quest Count: {}\n\
+             Skill Tiers: {}\n\
+             Classes Enabled: Warrior={} Ranger={} Mage={} Cleric={} Rogue={}\n\
+             Rates: XP={} Loot={} Event={}\n\
+             \nUse right panel fields or Tools -> RPG/MMORPG Builder -> Generate from Builder.",
+            self.mmorpg_world_name,
+            self.mmorpg_max_players,
+            self.mmorpg_starting_level,
+            self.mmorpg_race_count,
+            self.mmorpg_quest_count,
+            self.mmorpg_skill_tier_count,
+            self.mmorpg_include_warrior,
+            self.mmorpg_include_ranger,
+            self.mmorpg_include_mage,
+            self.mmorpg_include_cleric,
+            self.mmorpg_include_rogue,
+            self.mmorpg_xp_rate,
+            self.mmorpg_loot_rate,
+            self.mmorpg_event_rate
+        ));
+        layout.add_pair("".to_string(), Box::new(txt));
+
+        canvas.set_layout(layout);
+        ui.show_dialog(
+            "RPG/MMORPG Builder",
+            canvas,
+            vec![TheDialogButtonRole::Accept],
+            ctx,
+        );
+    }
+
     fn tool_group_label(&self, tool_name: &str, fallback: &str) -> String {
         match tool_name {
             "Select Tool" => "Modes / Select".to_string(),
@@ -536,6 +582,16 @@ impl Editor {
         add_quick_button("QuickWindowDetails", "gear", "Open Details panel");
         add_quick_button("QuickWindowLog", "file-text", "Open Output Log panel");
         add_quick_button("QuickWindowBlueprint", "code", "Open Blueprint panel");
+        add_quick_button(
+            "QuickMmorpgBuilder",
+            "list",
+            "Open RPG/MMORPG builder summary",
+        );
+        add_quick_button(
+            "QuickMmorpgGenerate",
+            "wand-magic-sparkles",
+            "Generate RPG/MMORPG from builder inputs",
+        );
         add_quick_button("QuickThemeDark", "dark_tabbar_selected", "Dark theme preset");
         add_quick_button("QuickThemeLight", "dark_tabbar_hover", "Light theme preset");
         add_quick_button("QuickThemeSlate", "dark_tabbar_normal", "Slate theme preset");
@@ -705,6 +761,73 @@ impl Editor {
         event_rate_edit.set_range(TheValue::RangeF32(0.1..=5.0));
         event_rate_edit.set_continuous(true);
         right_settings_layout.add_pair("MMO / Event Rate".to_string(), Box::new(event_rate_edit));
+
+        let mut mmorpg_world_name = TheTextLineEdit::new(TheId::named("MmorpgWorldNameEdit"));
+        mmorpg_world_name.set_value(TheValue::Text(self.mmorpg_world_name.clone()));
+        mmorpg_world_name.set_continuous(true);
+        right_settings_layout.add_pair("MMO / World Name".to_string(), Box::new(mmorpg_world_name));
+
+        let mut mmorpg_max_players = TheTextLineEdit::new(TheId::named("MmorpgMaxPlayersEdit"));
+        mmorpg_max_players.set_value(TheValue::Int(self.mmorpg_max_players));
+        mmorpg_max_players.set_range(TheValue::RangeI32(10..=100_000));
+        mmorpg_max_players.set_continuous(true);
+        right_settings_layout.add_pair("MMO / Max Players".to_string(), Box::new(mmorpg_max_players));
+
+        let mut mmorpg_starting_level =
+            TheTextLineEdit::new(TheId::named("MmorpgStartingLevelEdit"));
+        mmorpg_starting_level.set_value(TheValue::Int(self.mmorpg_starting_level));
+        mmorpg_starting_level.set_range(TheValue::RangeI32(1..=99));
+        mmorpg_starting_level.set_continuous(true);
+        right_settings_layout.add_pair(
+            "RPG / Starting Level".to_string(),
+            Box::new(mmorpg_starting_level),
+        );
+
+        let mut mmorpg_race_count = TheTextLineEdit::new(TheId::named("MmorpgRaceCountEdit"));
+        mmorpg_race_count.set_value(TheValue::Int(self.mmorpg_race_count));
+        mmorpg_race_count.set_range(TheValue::RangeI32(1..=12));
+        mmorpg_race_count.set_continuous(true);
+        right_settings_layout.add_pair("RPG / Race Types".to_string(), Box::new(mmorpg_race_count));
+
+        let mut mmorpg_quest_count = TheTextLineEdit::new(TheId::named("MmorpgQuestCountEdit"));
+        mmorpg_quest_count.set_value(TheValue::Int(self.mmorpg_quest_count));
+        mmorpg_quest_count.set_range(TheValue::RangeI32(1..=64));
+        mmorpg_quest_count.set_continuous(true);
+        right_settings_layout.add_pair("RPG / Quest Count".to_string(), Box::new(mmorpg_quest_count));
+
+        let mut mmorpg_skill_tier_count =
+            TheTextLineEdit::new(TheId::named("MmorpgSkillTierCountEdit"));
+        mmorpg_skill_tier_count.set_value(TheValue::Int(self.mmorpg_skill_tier_count));
+        mmorpg_skill_tier_count.set_range(TheValue::RangeI32(1..=6));
+        mmorpg_skill_tier_count.set_continuous(true);
+        right_settings_layout.add_pair(
+            "RPG / Skill Tiers".to_string(),
+            Box::new(mmorpg_skill_tier_count),
+        );
+
+        let mut class_warrior_cb = TheCheckButton::new(TheId::named("MmorpgClassWarriorCB"));
+        class_warrior_cb.set_value(TheValue::Bool(self.mmorpg_include_warrior));
+        right_settings_layout.add_pair("RPG / Class Warrior".to_string(), Box::new(class_warrior_cb));
+
+        let mut class_ranger_cb = TheCheckButton::new(TheId::named("MmorpgClassRangerCB"));
+        class_ranger_cb.set_value(TheValue::Bool(self.mmorpg_include_ranger));
+        right_settings_layout.add_pair("RPG / Class Ranger".to_string(), Box::new(class_ranger_cb));
+
+        let mut class_mage_cb = TheCheckButton::new(TheId::named("MmorpgClassMageCB"));
+        class_mage_cb.set_value(TheValue::Bool(self.mmorpg_include_mage));
+        right_settings_layout.add_pair("RPG / Class Mage".to_string(), Box::new(class_mage_cb));
+
+        let mut class_cleric_cb = TheCheckButton::new(TheId::named("MmorpgClassClericCB"));
+        class_cleric_cb.set_value(TheValue::Bool(self.mmorpg_include_cleric));
+        right_settings_layout.add_pair("RPG / Class Cleric".to_string(), Box::new(class_cleric_cb));
+
+        let mut class_rogue_cb = TheCheckButton::new(TheId::named("MmorpgClassRogueCB"));
+        class_rogue_cb.set_value(TheValue::Bool(self.mmorpg_include_rogue));
+        right_settings_layout.add_pair("RPG / Class Rogue".to_string(), Box::new(class_rogue_cb));
+
+        let mut mmorpg_generate_btn = TheTraybarButton::new(TheId::named("MmorpgGenerateBtn"));
+        mmorpg_generate_btn.set_text("Generate RPG/MMO".to_string());
+        right_settings_layout.add_pair("MMO / Build".to_string(), Box::new(mmorpg_generate_btn));
 
         let mut sim_tick_btn = TheTraybarButton::new(TheId::named("MmorpgSimTickBtn"));
         sim_tick_btn.set_text("Sim Tick".to_string());
@@ -944,6 +1067,12 @@ impl Editor {
             "LeftAction::MenuTools::GenerateRpgMmorpg",
             "gear",
             "Generate RPG/MMORPG systems",
+        );
+        add_left_action(
+            "MMO / Builder",
+            "LeftAction::MenuMmorpgBuilder::Open",
+            "list",
+            "Open RPG/MMORPG builder summary",
         );
         add_left_action(
             "MMO / Sim Tick",
@@ -1245,6 +1374,60 @@ impl Editor {
             if let Some(v) = layout.get("mmorpg_event_rate").and_then(toml::Value::as_float) {
                 self.mmorpg_event_rate = (v as f32).clamp(0.1, 5.0);
             }
+            if let Some(v) = layout.get("mmorpg_world_name").and_then(toml::Value::as_str) {
+                self.mmorpg_world_name = v.to_string();
+            }
+            if let Some(v) = layout.get("mmorpg_max_players").and_then(toml::Value::as_integer) {
+                self.mmorpg_max_players = (v as i32).clamp(10, 100_000);
+            }
+            if let Some(v) = layout
+                .get("mmorpg_starting_level")
+                .and_then(toml::Value::as_integer)
+            {
+                self.mmorpg_starting_level = (v as i32).clamp(1, 99);
+            }
+            if let Some(v) = layout.get("mmorpg_race_count").and_then(toml::Value::as_integer) {
+                self.mmorpg_race_count = (v as i32).clamp(1, 12);
+            }
+            if let Some(v) = layout.get("mmorpg_quest_count").and_then(toml::Value::as_integer) {
+                self.mmorpg_quest_count = (v as i32).clamp(1, 64);
+            }
+            if let Some(v) = layout
+                .get("mmorpg_skill_tier_count")
+                .and_then(toml::Value::as_integer)
+            {
+                self.mmorpg_skill_tier_count = (v as i32).clamp(1, 6);
+            }
+            if let Some(v) = layout
+                .get("mmorpg_include_warrior")
+                .and_then(toml::Value::as_bool)
+            {
+                self.mmorpg_include_warrior = v;
+            }
+            if let Some(v) = layout
+                .get("mmorpg_include_ranger")
+                .and_then(toml::Value::as_bool)
+            {
+                self.mmorpg_include_ranger = v;
+            }
+            if let Some(v) = layout
+                .get("mmorpg_include_mage")
+                .and_then(toml::Value::as_bool)
+            {
+                self.mmorpg_include_mage = v;
+            }
+            if let Some(v) = layout
+                .get("mmorpg_include_cleric")
+                .and_then(toml::Value::as_bool)
+            {
+                self.mmorpg_include_cleric = v;
+            }
+            if let Some(v) = layout
+                .get("mmorpg_include_rogue")
+                .and_then(toml::Value::as_bool)
+            {
+                self.mmorpg_include_rogue = v;
+            }
         }
     }
 
@@ -1291,6 +1474,57 @@ impl Editor {
         ui.set_widget_value("MmorpgXpRateEdit", ctx, TheValue::Float(self.mmorpg_xp_rate));
         ui.set_widget_value("MmorpgLootRateEdit", ctx, TheValue::Float(self.mmorpg_loot_rate));
         ui.set_widget_value("MmorpgEventRateEdit", ctx, TheValue::Float(self.mmorpg_event_rate));
+        ui.set_widget_value(
+            "MmorpgWorldNameEdit",
+            ctx,
+            TheValue::Text(self.mmorpg_world_name.clone()),
+        );
+        ui.set_widget_value(
+            "MmorpgMaxPlayersEdit",
+            ctx,
+            TheValue::Int(self.mmorpg_max_players),
+        );
+        ui.set_widget_value(
+            "MmorpgStartingLevelEdit",
+            ctx,
+            TheValue::Int(self.mmorpg_starting_level),
+        );
+        ui.set_widget_value("MmorpgRaceCountEdit", ctx, TheValue::Int(self.mmorpg_race_count));
+        ui.set_widget_value(
+            "MmorpgQuestCountEdit",
+            ctx,
+            TheValue::Int(self.mmorpg_quest_count),
+        );
+        ui.set_widget_value(
+            "MmorpgSkillTierCountEdit",
+            ctx,
+            TheValue::Int(self.mmorpg_skill_tier_count),
+        );
+        ui.set_widget_value(
+            "MmorpgClassWarriorCB",
+            ctx,
+            TheValue::Bool(self.mmorpg_include_warrior),
+        );
+        ui.set_widget_value(
+            "MmorpgClassRangerCB",
+            ctx,
+            TheValue::Bool(self.mmorpg_include_ranger),
+        );
+        ui.set_widget_value(
+            "MmorpgClassMageCB",
+            ctx,
+            TheValue::Bool(self.mmorpg_include_mage),
+        );
+        ui.set_widget_value(
+            "MmorpgClassClericCB",
+            ctx,
+            TheValue::Bool(self.mmorpg_include_cleric),
+        );
+        ui.set_widget_value(
+            "MmorpgClassRogueCB",
+            ctx,
+            TheValue::Bool(self.mmorpg_include_rogue),
+        );
 
         let theme_index = match self.theme_preset.as_str() {
             "Light" => 1,
@@ -1465,13 +1699,34 @@ impl Editor {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(1);
-        let world_name = if self.project.name.is_empty() {
+        let fallback_world = if self.project.name.is_empty() {
             "Encheament Online".to_string()
         } else {
             format!("{} Online", self.project.name)
         };
+        let world_name = if self.mmorpg_world_name.trim().is_empty() {
+            fallback_world
+        } else {
+            self.mmorpg_world_name.trim().to_string()
+        };
+        self.mmorpg_world_name = world_name.clone();
 
-        let mut generated = crate::game_logic::generate_starter_rpg_mmorpg_config(seed, world_name);
+        let input = crate::game_logic::RpgMmorpgCreateInput {
+            world_name,
+            max_players_per_shard: self.mmorpg_max_players.clamp(10, 100_000) as u32,
+            starting_level: self.mmorpg_starting_level.clamp(1, 99) as u32,
+            race_count: self.mmorpg_race_count.clamp(1, 12) as u32,
+            quest_count: self.mmorpg_quest_count.clamp(1, 64) as u32,
+            skill_tier_count: self.mmorpg_skill_tier_count.clamp(1, 6) as u32,
+            include_warrior: self.mmorpg_include_warrior,
+            include_ranger: self.mmorpg_include_ranger,
+            include_mage: self.mmorpg_include_mage,
+            include_cleric: self.mmorpg_include_cleric,
+            include_rogue: self.mmorpg_include_rogue,
+        };
+
+        let mut generated =
+            crate::game_logic::generate_starter_rpg_mmorpg_config_with_input(seed, &input);
         generated.world_state.server_tick_ms =
             ((generated.world_state.server_tick_ms as f32) / self.mmorpg_event_rate.max(0.1))
                 as u64;
@@ -1499,6 +1754,14 @@ impl Editor {
             systems.insert(
                 "class_count".to_string(),
                 toml::Value::Integer(generated.default_classes.len() as i64),
+            );
+            systems.insert(
+                "class_template_count".to_string(),
+                toml::Value::Integer(generated.class_templates.len() as i64),
+            );
+            systems.insert(
+                "race_count".to_string(),
+                toml::Value::Integer(generated.race_templates.len() as i64),
             );
             systems.insert(
                 "skill_count".to_string(),
@@ -1531,6 +1794,8 @@ impl Editor {
              Seed: {}\n\
              World: {}\n\
              Classes: {}\n\
+             Class Templates: {}\n\
+             Race Types: {}\n\
              Skills: {}\n\
              Quests: {}\n\
              Loot Entries: {}\n\
@@ -1538,6 +1803,8 @@ impl Editor {
             generated.seed,
             generated.world_state.world_name,
             generated.default_classes.len(),
+            generated.class_templates.len(),
+            generated.race_templates.len(),
             generated.starter_skills.len(),
             generated.starter_quests.len(),
             generated.starter_loot_table.len()
@@ -2302,6 +2569,20 @@ impl TheTrait for Editor {
         mmo_ops_menu.add(TheContextMenuItem::new(
             "Generate RPG/MMORPG Systems".to_string(),
             TheId::named("MenuTools::GenerateRpgMmorpg"),
+        ));
+        let mut mmorpg_builder_menu = TheContextMenu::named("RPG/MMORPG Builder".to_string());
+        mmorpg_builder_menu.add(TheContextMenuItem::new(
+            "Open Builder Summary".to_string(),
+            TheId::named("MenuMmorpgBuilder::Open"),
+        ));
+        mmorpg_builder_menu.add(TheContextMenuItem::new(
+            "Generate from Builder Inputs".to_string(),
+            TheId::named("MenuMmorpgBuilder::Generate"),
+        ));
+        mmo_ops_menu.add(TheContextMenuItem::new_submenu(
+            "Builder".to_string(),
+            TheId::named("MenuMmorpgBuilder::Submenu"),
+            mmorpg_builder_menu,
         ));
         mmo_ops_menu.add(TheContextMenuItem::new(
             "MMO Sim: Tick".to_string(),
@@ -3162,6 +3443,11 @@ impl TheTrait for Editor {
                         ));
                         redraw = true;
                     } else if item_id.name == "MenuTools::GenerateRpgMmorpg" {
+                        self.generate_rpg_mmorpg_system_data(ui, ctx);
+                        redraw = true;
+                    } else if item_id.name == "MenuMmorpgBuilder::Open" {
+                        self.show_rpg_mmorpg_builder_dialog(ui, ctx);
+                    } else if item_id.name == "MenuMmorpgBuilder::Generate" {
                         self.generate_rpg_mmorpg_system_data(ui, ctx);
                         redraw = true;
                     } else if item_id.name == "MenuMmoSim::Tick" {
@@ -4169,6 +4455,9 @@ impl TheTrait for Editor {
                         } else if id.name == "MmorpgSimTickBtn" {
                             let msg = self.run_mmorpg_sim_tick();
                             ctx.ui.send(TheEvent::SetStatusText(TheId::empty(), msg));
+                        } else if id.name == "MmorpgGenerateBtn" {
+                            self.generate_rpg_mmorpg_system_data(ui, ctx);
+                            redraw = true;
                         } else if id.name == "MmorpgSimCombatBtn" {
                             let msg = self.run_mmorpg_sim_combat();
                             ctx.ui.send(TheEvent::SetStatusText(TheId::empty(), msg));
@@ -4331,6 +4620,12 @@ impl TheTrait for Editor {
                                 ctx,
                                 crate::ide_panels::IdePanelKind::Blueprint,
                             );
+                            redraw = true;
+                        } else if id.name == "QuickMmorpgBuilder" {
+                            self.show_rpg_mmorpg_builder_dialog(ui, ctx);
+                            redraw = true;
+                        } else if id.name == "QuickMmorpgGenerate" {
+                            self.generate_rpg_mmorpg_system_data(ui, ctx);
                             redraw = true;
                         } else if id.name == "QuickThemeDark" {
                             self.theme_preset = "Dark".to_string();
@@ -4851,6 +5146,61 @@ impl TheTrait for Editor {
                     } else if id.name == "MmorpgEventRateEdit" {
                         if let Some(v) = value.to_f32() {
                             self.mmorpg_event_rate = v.clamp(0.1, 5.0);
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "MmorpgWorldNameEdit" {
+                        if let TheValue::Text(v) = value {
+                            self.mmorpg_world_name = v.clone();
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "MmorpgMaxPlayersEdit" {
+                        if let Some(v) = value.to_i32() {
+                            self.mmorpg_max_players = v.clamp(10, 100_000);
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "MmorpgStartingLevelEdit" {
+                        if let Some(v) = value.to_i32() {
+                            self.mmorpg_starting_level = v.clamp(1, 99);
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "MmorpgRaceCountEdit" {
+                        if let Some(v) = value.to_i32() {
+                            self.mmorpg_race_count = v.clamp(1, 12);
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "MmorpgQuestCountEdit" {
+                        if let Some(v) = value.to_i32() {
+                            self.mmorpg_quest_count = v.clamp(1, 64);
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "MmorpgSkillTierCountEdit" {
+                        if let Some(v) = value.to_i32() {
+                            self.mmorpg_skill_tier_count = v.clamp(1, 6);
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "MmorpgClassWarriorCB" {
+                        if let TheValue::Bool(v) = value {
+                            self.mmorpg_include_warrior = v;
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "MmorpgClassRangerCB" {
+                        if let TheValue::Bool(v) = value {
+                            self.mmorpg_include_ranger = v;
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "MmorpgClassMageCB" {
+                        if let TheValue::Bool(v) = value {
+                            self.mmorpg_include_mage = v;
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "MmorpgClassClericCB" {
+                        if let TheValue::Bool(v) = value {
+                            self.mmorpg_include_cleric = v;
+                            workspace_prefs_dirty = true;
+                        }
+                    } else if id.name == "MmorpgClassRogueCB" {
+                        if let TheValue::Bool(v) = value {
+                            self.mmorpg_include_rogue = v;
                             workspace_prefs_dirty = true;
                         }
                     }
