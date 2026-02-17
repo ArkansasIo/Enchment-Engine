@@ -613,63 +613,6 @@ pub fn generate_starter_rpg_mmorpg_config_with_input(
         })
         .collect::<Vec<_>>();
 
-    let starter_skills = vec![
-        Skill {
-            id: "skill_slash".to_string(),
-            name: "Slash".to_string(),
-            class: CharacterClass::Warrior,
-            damage_type: DamageType::Physical,
-            base_power: 28,
-            mana_cost: 0,
-            cooldown_ms: 1500,
-        },
-        Skill {
-            id: "skill_firebolt".to_string(),
-            name: "Firebolt".to_string(),
-            class: CharacterClass::Mage,
-            damage_type: DamageType::Fire,
-            base_power: 34,
-            mana_cost: 12,
-            cooldown_ms: 1800,
-        },
-        Skill {
-            id: "skill_shot".to_string(),
-            name: "Aimed Shot".to_string(),
-            class: CharacterClass::Ranger,
-            damage_type: DamageType::Physical,
-            base_power: 30,
-            mana_cost: 6,
-            cooldown_ms: 1600,
-        },
-    ];
-
-    let starter_quests = vec![
-        QuestTemplate {
-            quest_id: "q_start_hunt".to_string(),
-            title: "Culling the Wilds".to_string(),
-            min_level: 1,
-            objectives: vec![QuestObjective {
-                objective_id: "kill_wolf".to_string(),
-                description: "Defeat wolves near the village".to_string(),
-                required: 6,
-            }],
-            reward_xp: 220,
-            reward_gold: 35,
-        },
-        QuestTemplate {
-            quest_id: "q_supply_run".to_string(),
-            title: "Supply Run".to_string(),
-            min_level: 1,
-            objectives: vec![QuestObjective {
-                objective_id: "collect_herbs".to_string(),
-                description: "Collect healing herbs".to_string(),
-                required: 8,
-            }],
-            reward_xp: 180,
-            reward_gold: 25,
-        },
-    ];
-
     let starter_loot_table = vec![
         LootTableEntry {
             item_id: "gold_coin".to_string(),

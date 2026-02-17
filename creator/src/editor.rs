@@ -126,6 +126,17 @@ pub struct Editor {
     mmorpg_xp_rate: f32,
     mmorpg_loot_rate: f32,
     mmorpg_event_rate: f32,
+    mmorpg_world_name: String,
+    mmorpg_max_players: i32,
+    mmorpg_starting_level: i32,
+    mmorpg_race_count: i32,
+    mmorpg_quest_count: i32,
+    mmorpg_skill_tier_count: i32,
+    mmorpg_include_warrior: bool,
+    mmorpg_include_ranger: bool,
+    mmorpg_include_mage: bool,
+    mmorpg_include_cleric: bool,
+    mmorpg_include_rogue: bool,
     last_generated_town: Option<crate::game_logic::TownMapData>,
     last_generated_mmorpg: Option<crate::game_logic::StarterRpgMmorpgConfig>,
 }
@@ -1095,6 +1106,50 @@ impl Editor {
                 "mmorpg_event_rate".to_string(),
                 toml::Value::Float(self.mmorpg_event_rate as f64),
             );
+            layout.insert(
+                "mmorpg_world_name".to_string(),
+                toml::Value::String(self.mmorpg_world_name.clone()),
+            );
+            layout.insert(
+                "mmorpg_max_players".to_string(),
+                toml::Value::Integer(self.mmorpg_max_players as i64),
+            );
+            layout.insert(
+                "mmorpg_starting_level".to_string(),
+                toml::Value::Integer(self.mmorpg_starting_level as i64),
+            );
+            layout.insert(
+                "mmorpg_race_count".to_string(),
+                toml::Value::Integer(self.mmorpg_race_count as i64),
+            );
+            layout.insert(
+                "mmorpg_quest_count".to_string(),
+                toml::Value::Integer(self.mmorpg_quest_count as i64),
+            );
+            layout.insert(
+                "mmorpg_skill_tier_count".to_string(),
+                toml::Value::Integer(self.mmorpg_skill_tier_count as i64),
+            );
+            layout.insert(
+                "mmorpg_include_warrior".to_string(),
+                toml::Value::Boolean(self.mmorpg_include_warrior),
+            );
+            layout.insert(
+                "mmorpg_include_ranger".to_string(),
+                toml::Value::Boolean(self.mmorpg_include_ranger),
+            );
+            layout.insert(
+                "mmorpg_include_mage".to_string(),
+                toml::Value::Boolean(self.mmorpg_include_mage),
+            );
+            layout.insert(
+                "mmorpg_include_cleric".to_string(),
+                toml::Value::Boolean(self.mmorpg_include_cleric),
+            );
+            layout.insert(
+                "mmorpg_include_rogue".to_string(),
+                toml::Value::Boolean(self.mmorpg_include_rogue),
+            );
         }
 
         if let Ok(config_text) = toml::to_string_pretty(&root_value) {
@@ -1918,6 +1973,17 @@ impl TheTrait for Editor {
             mmorpg_xp_rate: 1.0,
             mmorpg_loot_rate: 1.0,
             mmorpg_event_rate: 1.0,
+            mmorpg_world_name: "Encheament Online".to_string(),
+            mmorpg_max_players: 600,
+            mmorpg_starting_level: 1,
+            mmorpg_race_count: 4,
+            mmorpg_quest_count: 4,
+            mmorpg_skill_tier_count: 2,
+            mmorpg_include_warrior: true,
+            mmorpg_include_ranger: true,
+            mmorpg_include_mage: true,
+            mmorpg_include_cleric: true,
+            mmorpg_include_rogue: true,
             last_generated_town: None,
             last_generated_mmorpg: None,
         }
