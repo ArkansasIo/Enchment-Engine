@@ -2,8 +2,7 @@
 
 **Version:** 0.8.100  
 **Developer:** stephen delinejr
-**Website:** https://eldiron.com  
-**Source:** https://github.com/markusmoenig/Eldiron
+**Website:** 
 
 Enchentment Engine is a modular retro-style RPG/MMORPG game engine and editor written in Rust.
 
