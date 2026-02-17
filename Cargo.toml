@@ -1,8 +1,10 @@
 [workspace]
 
 members = [
-    "crates/*",
-    "engine/items"
+    "crates/rusterix",
+    "crates/scenevm",
+    "crates/shared",
+    "crates/theframework"
 ]
 
 resolver = "2"
