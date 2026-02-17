@@ -70,17 +70,6 @@ pub fn build_feature_menu() -> Vec<MenuItem> {
                 MenuItem::new("Biomes"),
                 MenuItem::new("Weather"),
             ]),
-            MenuItem::with_submenus("World Map System", vec![
-                MenuItem::new("Planet View (2D)"),
-                MenuItem::new("Planet View (3D)"),
-                MenuItem::new("Continents"),
-                MenuItem::new("Oceans"),
-                MenuItem::new("Climate Zones"),
-                MenuItem::new("Kingdoms/Regions"),
-                MenuItem::new("Zones & Subzones"),
-                MenuItem::new("Name Places/Auto-Name"),
-                MenuItem::new("World Map Tools"),
-            ]),
         ]),
         MenuItem::with_submenus("MMORPG Features", vec![
             MenuItem::with_submenus("Guilds", vec![
@@ -91,28 +80,6 @@ pub fn build_feature_menu() -> Vec<MenuItem> {
                 MenuItem::new("Guild Bank"),
                 MenuItem::new("Guild Chat"),
             ]),
-                            MenuItem::with_submenus("Dungeon Generation", vec![
-                                MenuItem::with_submenus("Dungeon Type", vec![
-                                    MenuItem::new("Cave"),
-                                    MenuItem::new("Ruins"),
-                                    MenuItem::new("Fortress"),
-                                    MenuItem::new("Sewers"),
-                                    MenuItem::new("Temple"),
-                                ]),
-                                MenuItem::with_submenus("Dungeon Class", vec![
-                                    MenuItem::new("Standard"),
-                                    MenuItem::new("Maze"),
-                                    MenuItem::new("Linear"),
-                                    MenuItem::new("Branching"),
-                                ]),
-                                MenuItem::with_submenus("Dungeon Size", vec![
-                                    MenuItem::new("Small"),
-                                    MenuItem::new("Medium"),
-                                    MenuItem::new("Large"),
-                                    MenuItem::new("Huge"),
-                                ]),
-                                MenuItem::new("Generate Dungeon"),
-                            ]),
             MenuItem::with_submenus("Trading", vec![
                 MenuItem::new("Player Trading"),
                 MenuItem::new("Auction House"),
@@ -152,34 +119,6 @@ pub fn build_feature_menu() -> Vec<MenuItem> {
             MenuItem::new("Object Placer"),
             MenuItem::new("Event Editor"),
             MenuItem::new("Cutscene Editor"),
-        ]),
-        MenuItem::with_submenus("Map Forge Systems", vec![
-            MenuItem::with_submenus("Editors", vec![
-                MenuItem::new("Map Editor"),
-                MenuItem::new("Tile Editor"),
-                MenuItem::new("Object Placer"),
-                MenuItem::new("Event Editor"),
-                MenuItem::new("Cutscene Editor"),
-            ]),
-            MenuItem::with_submenus("Tools", vec![
-                MenuItem::new("Paint Tool"),
-                MenuItem::new("Erase Tool"),
-                MenuItem::new("Fill Tool"),
-                MenuItem::new("Selection Tool"),
-                MenuItem::new("Object Placement Tool"),
-            ]),
-            MenuItem::with_submenus("Layers", vec![
-                MenuItem::new("Terrain Layer"),
-                MenuItem::new("Collision Layer"),
-                MenuItem::new("Object Layer"),
-                MenuItem::new("Event Layer"),
-            ]),
-            MenuItem::with_submenus("Utilities", vec![
-                MenuItem::new("Toggle Grid"),
-                MenuItem::new("Snap To Grid"),
-                MenuItem::new("Resize Map"),
-                MenuItem::new("Export Map"),
-            ]),
         ]),
         MenuItem::with_submenus("Systems", vec![
             MenuItem::new("Save/Load System"),

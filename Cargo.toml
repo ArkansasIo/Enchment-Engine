@@ -1,6 +1,7 @@
 [workspace]
 
 members = [
+    "creator",
     "crates/rusterix",
     "crates/scenevm",
     "crates/shared",

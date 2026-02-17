@@ -1,14 +1,11 @@
 //! Full-featured launcher app for Enchantment Engine
 
-use launcher_api::{LauncherConfig, show_splash, show_logo, show_loading_bar, run_installer, launch_engine};
+use launcher_api::{run_full_launcher_flow};
 
 fn main() {
-    let config = LauncherConfig::load("../launcher_config.toml");
-    show_splash(&config);
-    show_logo(&config);
-    show_loading_bar(&config, "Loading Engine...");
-    if config.enable_installer && !config.dev_mode {
-        run_installer(&config);
-    }
-    launch_engine(&config);
+    // Collect command-line arguments (excluding program name)
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    // Run the full launcher flow with logging, version info, and custom args
+    run_full_launcher_flow("../launcher_config.toml", &arg_refs);
 }

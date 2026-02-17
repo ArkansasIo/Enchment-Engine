@@ -2,8 +2,8 @@
 
 This engine now includes a procedural town-generation subsystem inspired by:
 
-- `watabou/TownGeneratorOS`  
-  <https://github.com/watabou/TownGeneratorOS>
+- `watabou/MapForge`  
+  <https://github.com/watabou/TownGeneratorOS> (formerly TownGeneratorOS)
 
 ## What was integrated
 

@@ -59,4 +59,17 @@ impl FeatureToolLogic {
     pub fn edit_event(&self) {
         println!("Editing event/special event system (stub implementation)");
     }
+
+    // Map Forge systems
+    pub fn open_map_forge(&self) {
+        println!("Opening Map Forge workspace (stub implementation)");
+    }
+
+    pub fn edit_map_forge_layers(&self) {
+        println!("Editing Map Forge layers (stub implementation)");
+    }
+
+    pub fn export_map_forge_map(&self) {
+        println!("Exporting Map Forge map (stub implementation)");
+    }
 }

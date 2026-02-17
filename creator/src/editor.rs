@@ -71,12 +71,6 @@ pub static SHADEGRIDFX: LazyLock<RwLock<Module>> =
 pub static SHADERBUFFER: LazyLock<RwLock<TheRGBABuffer>> =
     LazyLock::new(|| RwLock::new(TheRGBABuffer::new(TheDim::sized(200, 200))));
 
-const LEFT_ICON_BAR_WIDTH: i32 = 72;
-const LEFT_TOOL_NAMES_WIDTH: i32 = 360;
-const LEFT_TOOL_TEXT_WIDTH: i32 = 230;
-const RIGHT_ICON_BAR_WIDTH: i32 = 148;
-const RIGHT_SETTINGS_WIDTH: i32 = 320;
-
 pub struct Editor {
     project: Project,
     project_path: Option<PathBuf>,
@@ -150,6 +144,79 @@ pub struct Editor {
 
 
 impl Editor {
+    fn is_compact_ui(&self, ctx: &TheContext) -> bool {
+        ctx.width <= 1440 || ctx.height <= 860
+    }
+
+    fn is_tiny_ui(&self, ctx: &TheContext) -> bool {
+        ctx.width <= 1280 || ctx.height <= 760
+    }
+
+    fn left_panel_width(&self, ctx: &TheContext) -> i32 {
+        if self.is_tiny_ui(ctx) {
+            ((ctx.width as i32 * 22) / 100).clamp(170, 300)
+        } else if self.is_compact_ui(ctx) {
+            ((ctx.width as i32 * 23) / 100).clamp(180, 330)
+        } else {
+            ((ctx.width as i32 * 24) / 100).clamp(190, 360)
+        }
+    }
+
+    fn right_icon_panel_width(&self, ctx: &TheContext) -> i32 {
+        if self.is_tiny_ui(ctx) {
+            ((ctx.width as i32 * 8) / 100).clamp(72, 104)
+        } else if self.is_compact_ui(ctx) {
+            ((ctx.width as i32 * 9) / 100).clamp(80, 116)
+        } else {
+            ((ctx.width as i32 * 10) / 100).clamp(88, 128)
+        }
+    }
+
+    fn right_settings_panel_width(&self, ctx: &TheContext) -> i32 {
+        if self.is_tiny_ui(ctx) {
+            ((ctx.width as i32 * 17) / 100).clamp(170, 250)
+        } else if self.is_compact_ui(ctx) {
+            ((ctx.width as i32 * 19) / 100).clamp(190, 280)
+        } else {
+            ((ctx.width as i32 * 20) / 100).clamp(200, 300)
+        }
+    }
+
+    fn effective_side_widths(&self, ctx: &TheContext) -> (i32, i32) {
+        let mut left = if self.show_left_toolbar {
+            self.left_panel_width(ctx)
+        } else {
+            0
+        };
+        let mut right = if self.show_right_toolbar {
+            self.right_settings_panel_width(ctx)
+        } else {
+            0
+        };
+
+        let min_center = if self.is_tiny_ui(ctx) {
+            460
+        } else if self.is_compact_ui(ctx) {
+            560
+        } else {
+            700
+        };
+        let budget = (ctx.width as i32 - min_center).max(120);
+        let total = left + right;
+        if total > budget && total > 0 {
+            left = (left * budget) / total;
+            right = budget - left;
+        }
+
+        if self.show_left_toolbar {
+            left = left.clamp(120, self.left_panel_width(ctx));
+        }
+        if self.show_right_toolbar {
+            right = right.clamp(96, self.right_settings_panel_width(ctx));
+        }
+        (left, right)
+    }
+
     fn is_realtime_mode(&self) -> bool {
         self.server_ctx.game_mode
             || RUSTERIX.read().unwrap().server.state == rusterix::ServerState::Running
@@ -165,35 +232,43 @@ impl Editor {
     }
 
     fn apply_toolbar_visibility(&self, ui: &mut TheUI, ctx: &mut TheContext) {
-        if let Some(left_layout) = ui.get_layout("Tool List Layout") {
-            left_layout
-                .limiter_mut()
-                .set_max_width(if self.show_left_toolbar {
-                    LEFT_ICON_BAR_WIDTH
-                } else {
-                    0
-                });
-            left_layout.relayout(ctx);
-        }
+        let (left_width, right_width) = self.effective_side_widths(ctx);
+
         if let Some(left_names_layout) = ui.get_layout("Left Tool Name Layout") {
             left_names_layout
                 .limiter_mut()
                 .set_max_width(if self.show_left_toolbar {
-                    LEFT_TOOL_NAMES_WIDTH
+                    left_width
                 } else {
                     0
                 });
             left_names_layout.relayout(ctx);
         }
+        if let Some(left_names_text_layout) = ui.get_text_layout("Left Tool Name Layout") {
+            left_names_text_layout.set_fixed_text_width((left_width - 70).max(120));
+            left_names_text_layout.relayout(ctx);
+        }
         if let Some(right_layout) = ui.get_layout("Right Tool Layout") {
             right_layout
                 .limiter_mut()
                 .set_max_width(if self.show_right_toolbar {
-                    RIGHT_ICON_BAR_WIDTH
+                    right_width.min(self.right_icon_panel_width(ctx))
                 } else {
                     0
                 });
             right_layout.relayout(ctx);
+        }
+        if let Some(right_settings_layout) = ui.get_text_layout("Right Settings Layout") {
+            right_settings_layout
+                .limiter_mut()
+                .set_max_width(if self.show_right_toolbar { right_width } else { 0 });
+            right_settings_layout.set_fixed_text_width((right_width - 108).max(92));
+            right_settings_layout.relayout(ctx);
+        }
+        if let Some(widget) = ui.get_widget("Server Time Slider") {
+            widget
+                .limiter_mut()
+                .set_max_width(((ctx.width as i32 * 22) / 100).clamp(120, 320));
         }
     }
 
@@ -203,7 +278,12 @@ impl Editor {
             "Slate" => Some(TheThemeColors::DefaultWidgetDarkBackground),
             _ => None,
         };
-        let side_color = match self.theme_preset.as_str() {
+        let left_panel_color = match self.theme_preset.as_str() {
+            "Light" => Some(TheThemeColors::TextLayoutBackground),
+            "Slate" => Some(TheThemeColors::DefaultWidgetDarkBackground),
+            _ => Some(TheThemeColors::DefaultWidgetDarkBackground),
+        };
+        let right_panel_color = match self.theme_preset.as_str() {
             "Light" => Some(TheThemeColors::TextLayoutBackground),
             "Slate" => Some(TheThemeColors::DefaultWidgetDarkBackground),
             _ => Some(TheThemeColors::ListLayoutBackground),
@@ -217,16 +297,12 @@ impl Editor {
             layout.set_background_color(top_color);
             layout.relayout(ctx);
         }
-        if let Some(layout) = ui.get_layout("Tool List Layout") {
-            layout.set_background_color(side_color);
-            layout.relayout(ctx);
-        }
         if let Some(layout) = ui.get_layout("Left Tool Name Layout") {
-            layout.set_background_color(side_color);
+            layout.set_background_color(left_panel_color);
             layout.relayout(ctx);
         }
         if let Some(layout) = ui.get_layout("Right Tool Layout") {
-            layout.set_background_color(side_color);
+            layout.set_background_color(right_panel_color);
             layout.relayout(ctx);
         }
     }
@@ -244,7 +320,7 @@ impl Editor {
         layout.limiter_mut().set_max_width(width - 30);
 
         let mut intro = TheText::new(TheId::named("Help Intro"));
-        intro.set_text("Encheament Engine Help".to_string());
+        intro.set_text("Enchentment Engine Help\nVersion: 0.8.100\nDeveloper: Markus Moenig\nWebsite: https://eldiron.com".to_string());
         layout.add_pair("".to_string(), Box::new(intro));
 
         let mut usage = TheText::new(TheId::named("Help Usage"));
@@ -304,25 +380,26 @@ impl Editor {
         layout.limiter_mut().set_max_width(width - 30);
 
         let mut title = TheText::new(TheId::named("About Title"));
-        title.set_text("Encheament Engine Creator v0.8.100".to_string());
+        title.set_text("Enchentment Engine Creator v0.8.100".to_string());
         layout.add_pair("".to_string(), Box::new(title));
 
         let mut body = TheText::new(TheId::named("About Body"));
         body.set_text(
-            "A retro-style 2D/3D RPG creator with map editing, scripting,\n\
-             content pipelines, runtime simulation, and export stubs.\n\n\
-             This build includes:\n\
-             - Main menu + submenu system\n\
-             - Top/left/right toolbars\n\
-             - Theme and editor options panel\n\
+            "A modular retro-style 2D/3D RPG/MMORPG engine and editor.\n\
+             Developed by Markus Moenig.\n\
+             Version: 0.8.100\n\
+             Website: https://eldiron.com\n\
+             Source: https://github.com/markusmoenig/Eldiron\n\
+             \nFeatures:\n\
+             - 2D/3D editing workflows\n\
+             - Unreal-style IDE layout\n\
+             - Town & world generation\n\
+             - RPG/MMORPG simulation\n\
+             - Scripting, content pipelines, export stubs\n\
              - In-editor help and about dialogs"
-                .to_string(),
+            .to_string(),
         );
         layout.add_pair("".to_string(), Box::new(body));
-
-        let mut links = TheText::new(TheId::named("About Links"));
-        links.set_text("Website: https://eldiron.com".to_string());
-        layout.add_pair("".to_string(), Box::new(links));
 
         canvas.set_layout(layout);
         ui.show_dialog("About Encheament Engine", canvas, vec![TheDialogButtonRole::Accept], ctx);
@@ -496,59 +573,40 @@ impl Editor {
         }
     }
 
-    fn build_left_ue5_tool_panel(&self, ctx: &mut TheContext) -> TheCanvas {
+    fn build_left_ue5_tool_panel(&self, _ctx: &mut TheContext) -> TheCanvas {
         let mut tool_list_canvas: TheCanvas = TheCanvas::new();
-
         let mut tool_list_bar_canvas = TheCanvas::new();
-        tool_list_bar_canvas.set_widget(TheToolListBar::new(TheId::named("Left Modes Bar")));
+        tool_list_bar_canvas.set_widget(TheToolListBar::new(TheId::named("Left Tools Bar")));
         tool_list_canvas.set_top(tool_list_bar_canvas);
-
-        let mut v_tool_list_layout = TheVLayout::new(TheId::named("Tool List Layout"));
-        v_tool_list_layout
-            .limiter_mut()
-            .set_max_width(LEFT_ICON_BAR_WIDTH);
-        v_tool_list_layout.set_margin(Vec4::new(2, 2, 2, 2));
-        v_tool_list_layout.set_padding(1);
-
-        TOOLLIST
-            .write()
-            .unwrap()
-            .set_active_editor(&mut v_tool_list_layout, ctx);
-        tool_list_canvas.set_layout(v_tool_list_layout);
+        let (left_width, _) = self.effective_side_widths(_ctx);
 
         let mut left_tool_name_layout = TheTextLayout::new(TheId::named("Left Tool Name Layout"));
         left_tool_name_layout
             .limiter_mut()
             .set_max_width(if self.show_left_toolbar {
-                LEFT_TOOL_NAMES_WIDTH
+                left_width
             } else {
                 0
             });
-        left_tool_name_layout.set_margin(Vec4::new(4, 4, 4, 4));
-        left_tool_name_layout.set_padding(3);
-        left_tool_name_layout.set_fixed_text_width(LEFT_TOOL_TEXT_WIDTH);
+        if self.is_tiny_ui(_ctx) {
+            left_tool_name_layout.set_margin(Vec4::new(2, 2, 2, 2));
+            left_tool_name_layout.set_padding(1);
+        } else {
+            left_tool_name_layout.set_margin(Vec4::new(4, 4, 4, 4));
+            left_tool_name_layout.set_padding(3);
+        }
+        left_tool_name_layout.set_fixed_text_width((left_width - 70).max(120));
 
         self.populate_left_tool_name_layout(&mut left_tool_name_layout);
-
-        let mut left_tool_name_canvas = TheCanvas::new();
-        left_tool_name_canvas.set_layout(left_tool_name_layout);
-
-        let mut left_tool_name_border_canvas = TheCanvas::new();
-        let mut left_tool_name_border_widget = TheIconView::new(TheId::empty());
-        left_tool_name_border_widget.set_border_color(Some([82, 82, 82, 255]));
-        left_tool_name_border_widget.limiter_mut().set_max_width(1);
-        left_tool_name_border_widget
-            .limiter_mut()
-            .set_max_height(i32::MAX);
-        left_tool_name_border_canvas.set_widget(left_tool_name_border_widget);
-        left_tool_name_canvas.set_right(left_tool_name_border_canvas);
-
-        tool_list_canvas.set_right(left_tool_name_canvas);
+        tool_list_canvas.set_layout(left_tool_name_layout);
         tool_list_canvas
     }
 
-    fn build_right_ue5_panel(&self) -> TheCanvas {
+    fn build_right_ue5_panel(&self, ctx: &TheContext) -> TheCanvas {
         let mut right_tool_canvas = TheCanvas::new();
+        let compact = self.is_compact_ui(ctx);
+        let tiny = self.is_tiny_ui(ctx);
+        let (_, right_width) = self.effective_side_widths(ctx);
 
         let mut right_tool_bar_canvas = TheCanvas::new();
         right_tool_bar_canvas.set_widget(TheToolListBar::new(TheId::named("Right Tool Bar")));
@@ -557,14 +615,23 @@ impl Editor {
         let mut right_tool_layout = TheVLayout::new(TheId::named("Right Tool Layout"));
         right_tool_layout
             .limiter_mut()
-            .set_max_width(RIGHT_ICON_BAR_WIDTH);
-        right_tool_layout.set_margin(Vec4::new(2, 2, 2, 2));
-        right_tool_layout.set_padding(1);
+            .set_max_width(right_width.min(self.right_icon_panel_width(ctx)));
+        if tiny {
+            right_tool_layout.set_margin(Vec4::new(1, 1, 1, 1));
+            right_tool_layout.set_padding(0);
+        } else {
+            right_tool_layout.set_margin(Vec4::new(2, 2, 2, 2));
+            right_tool_layout.set_padding(1);
+        }
 
         let mut add_quick_button = |id: &str, icon: &str, label: &str, status: &str| {
             let mut button = TheTraybarButton::new(TheId::named(id));
             button.set_icon_name(icon.to_string());
-            button.set_text(label.to_string());
+            if compact {
+                button.set_text(String::new());
+            } else {
+                button.set_text(label.to_string());
+            }
             button.set_status_text(status);
             right_tool_layout.add_widget(Box::new(button));
         };
@@ -628,11 +695,17 @@ impl Editor {
             .set_widget(TheTraybar::new(TheId::named("Right Settings Bar")));
 
         let mut right_settings_layout = TheTextLayout::new(TheId::named("Right Settings Layout"));
-        right_settings_layout.set_margin(Vec4::new(4, 4, 4, 4));
-        right_settings_layout.set_padding(4);
+        if tiny {
+            right_settings_layout.set_margin(Vec4::new(2, 2, 2, 2));
+            right_settings_layout.set_padding(2);
+        } else {
+            right_settings_layout.set_margin(Vec4::new(4, 4, 4, 4));
+            right_settings_layout.set_padding(4);
+        }
         right_settings_layout
             .limiter_mut()
-            .set_max_width(RIGHT_SETTINGS_WIDTH);
+            .set_max_width(right_width);
+        right_settings_layout.set_fixed_text_width((right_width - 108).max(92));
 
         let mut theme_dropdown = TheDropdownMenu::new(TheId::named("ThemePresetDropdown"));
         theme_dropdown.add_option("Dark".to_string());
@@ -934,7 +1007,7 @@ impl Editor {
         let mut workspace_canvas = TheCanvas::new();
         workspace_canvas.set_layout(viewport_utilities_layout);
         workspace_canvas.set_left(self.build_left_ue5_tool_panel(ctx));
-        workspace_canvas.set_right(self.build_right_ue5_panel());
+        workspace_canvas.set_right(self.build_right_ue5_panel(ctx));
         workspace_canvas
     }
 
@@ -1036,146 +1109,607 @@ impl Editor {
         self.left_toolbar_active_tool = Some(tool_name.to_string());
     }
 
-    fn add_left_group_header(
-        &self,
-        layout: &mut dyn TheTextLayoutTrait,
-        group: &str,
-        expanded: bool,
-    ) {
-        let toggle_id = format!("LeftGroupToggle::{}", group);
-        let mut toggle = TheTraybarButton::new(TheId::named(&toggle_id));
-        toggle.set_text(if expanded {
-            "Collapse".to_string()
-        } else {
-            "Expand".to_string()
-        });
-        toggle.set_status_text(&format!("Toggle {} tools section", group));
-        layout.add_pair(group.to_string(), Box::new(toggle));
-    }
-
     fn populate_left_tool_name_layout(&self, layout: &mut dyn TheTextLayoutTrait) {
-        let mut expand_all = TheTraybarButton::new(TheId::named("LeftGroupAction::ExpandAll"));
-        expand_all.set_text("Expand All".to_string());
-        expand_all.set_status_text("Expand all left toolbar sections");
-        layout.add_pair("Sections".to_string(), Box::new(expand_all));
+        fn add_left_text_command(
+            layout: &mut dyn TheTextLayoutTrait,
+            left_label: &str,
+            id: &str,
+            status: &str,
+            icon_name: &str,
+            selectable: bool,
+        ) {
+            let mut button = TheMenubarButton::new(TheId::named(id));
+            button.set_icon_name(icon_name.to_string());
+            button.set_status_text(status);
+            button.set_has_state(selectable);
+            layout.add_pair(left_label.to_string(), Box::new(button));
+        }
 
-        let mut collapse_all = TheTraybarButton::new(TheId::named("LeftGroupAction::CollapseAll"));
-        collapse_all.set_text("Collapse All".to_string());
-        collapse_all.set_status_text("Collapse all left toolbar sections");
-        layout.add_pair("Sections".to_string(), Box::new(collapse_all));
+        fn add_section_toggle(
+            layout: &mut dyn TheTextLayoutTrait,
+            title: &str,
+            toggle_id: &str,
+            expanded: bool,
+            status: &str,
+        ) {
+            let mut button = TheMenubarButton::new(TheId::named(toggle_id));
+            button.set_icon_name("list".to_string());
+            button.set_status_text(status);
+            button.set_has_state(false);
+            layout.add_pair(
+                format!(
+                    "{} {}",
+                    if expanded { "Section v" } else { "Section >" },
+                    title
+                ),
+                Box::new(button),
+            );
+        }
 
-        self.add_left_group_header(layout, "Modes", self.left_group_modes_expanded);
-        self.add_left_group_header(layout, "2D", self.left_group_2d_expanded);
-        self.add_left_group_header(layout, "3D", self.left_group_3d_expanded);
-        self.add_left_group_header(layout, "Editor", self.left_group_editor_expanded);
+        fn add_left_action(
+            layout: &mut dyn TheTextLayoutTrait,
+            section: &str,
+            label: &str,
+            id: &str,
+            status: &str,
+        ) {
+            add_left_text_command(
+                layout,
+                &format!("{} > {}", section, label),
+                id,
+                status,
+                match section {
+                    "File" => "folder",
+                    "Edit" => "pencil",
+                    "View" => "eye",
+                    "Select" => "cursor",
+                    "Actor" => "cube",
+                    "Blueprint" => "flow",
+                    "Cinematics" => "video",
+                    "Modes" => "layout",
+                    "Platforms" => "box",
+                    "Layouts" => "window",
+                    "Debug" => "bug",
+                    "Source" => "git-branch",
+                    "Tools" => "wrench",
+                    "Build" => "play",
+                    "Settings" => "gear",
+                    "Window" => "window",
+                    "Help" => "question-mark",
+                    _ => "arrow-right",
+                },
+                false,
+            );
+        }
 
-        if let Ok(toollist) = TOOLLIST.read() {
-            for tool in &toollist.game_tools {
-                let tool_name = tool.id().name.clone();
-                let group = self.left_tool_group_key(&tool_name);
-                let group_visible = match group {
-                    "Modes" => self.left_group_modes_expanded,
-                    "2D" => self.left_group_2d_expanded,
-                    "3D" => self.left_group_3d_expanded,
-                    _ => self.left_group_editor_expanded,
-                };
+        add_left_text_command(
+            layout,
+            "Sections > Expand All",
+            "LeftGroupAction::ExpandAll",
+            "Expand all left sections",
+            "plus",
+            false,
+        );
+        add_left_text_command(
+            layout,
+            "Sections > Collapse All",
+            "LeftGroupAction::CollapseAll",
+            "Collapse all left sections",
+            "minus",
+            false,
+        );
 
-                if !group_visible {
-                    continue;
+        add_section_toggle(
+            layout,
+            "Tools & Systems",
+            "LeftGroupToggle::Modes",
+            self.left_group_modes_expanded,
+            "Toggle tools and generation submenu",
+        );
+        if self.left_group_modes_expanded {
+            if let Ok(toollist) = TOOLLIST.read() {
+                for tool in &toollist.game_tools {
+                    let tool_name = tool.id().name.clone();
+                    let tool_label = self.tool_group_label(&tool_name, &tool.info());
+                    let left_tool_id = format!("LeftTool::{}", tool_name);
+                    add_left_text_command(
+                        layout,
+                        &format!("Tool > {}", tool_label),
+                        &left_tool_id,
+                        &format!("Activate {}", tool.info()),
+                        tool.icon_name().as_str(),
+                        true,
+                    );
                 }
+            }
 
-                let tool_label = format!("  {}", self.tool_group_label(&tool_name, &tool.info()));
-                let left_tool_id = format!("LeftTool::{}", tool_name);
-                let mut tool_button = TheMenubarButton::new(TheId::named(&left_tool_id));
-                tool_button.set_icon_name(tool.icon_name());
-                tool_button.set_has_state(true);
-                tool_button.set_status_text(&format!(
-                    "Activate {} from left workspace (linked to Tools menu)",
-                    tool.info()
-                ));
-                layout.add_pair(tool_label, Box::new(tool_button));
+            let tool_actions = [
+                (
+                    "Town > Generate",
+                    "LeftAction::MenuTools::GenerateTown",
+                    "Generate town systems",
+                ),
+                (
+                    "Town > Preset > Small Town",
+                    "LeftAction::MenuTownPreset::SmallTown",
+                    "Set town preset to Small Town",
+                ),
+                (
+                    "Town > Preset > Large Town",
+                    "LeftAction::MenuTownPreset::LargeTown",
+                    "Set town preset to Large Town",
+                ),
+                (
+                    "Town > Preset > Small City",
+                    "LeftAction::MenuTownPreset::SmallCity",
+                    "Set town preset to Small City",
+                ),
+                (
+                    "Town > Preset > Large City",
+                    "LeftAction::MenuTownPreset::LargeCity",
+                    "Set town preset to Large City",
+                ),
+                (
+                    "Town > Reseed + Generate",
+                    "LeftAction::MenuTown::ReseedGenerate",
+                    "Generate a town with a new random seed",
+                ),
+                (
+                    "Town > Regenerate",
+                    "LeftAction::MenuTown::Regenerate",
+                    "Regenerate town with current seed",
+                ),
+                (
+                    "Town > Toggle River",
+                    "LeftAction::MenuTown::ToggleRiver",
+                    "Toggle river generation",
+                ),
+                (
+                    "Town > Toggle Walls",
+                    "LeftAction::MenuTown::ToggleWalls",
+                    "Toggle wall generation",
+                ),
+                (
+                    "Town > Bake To Map",
+                    "LeftAction::MenuTown::BakeMap",
+                    "Bake generated town into the current map",
+                ),
+                (
+                    "Fantasy World > Generate",
+                    "LeftAction::MenuTools::GenerateFantasyWorld",
+                    "Generate continents, countries, and capitals",
+                ),
+                (
+                    "RPG/MMORPG > Generate",
+                    "LeftAction::MenuTools::GenerateRpgMmorpg",
+                    "Generate RPG/MMORPG systems",
+                ),
+                (
+                    "RPG/MMORPG > Builder > Open",
+                    "LeftAction::MenuMmorpgBuilder::Open",
+                    "Open RPG/MMORPG builder summary",
+                ),
+                (
+                    "RPG/MMORPG > Builder > Generate",
+                    "LeftAction::MenuMmorpgBuilder::Generate",
+                    "Generate RPG/MMORPG from builder inputs",
+                ),
+                (
+                    "RPG/MMORPG > Sim > Tick",
+                    "LeftAction::MenuMmoSim::Tick",
+                    "Run one MMO simulation tick",
+                ),
+                (
+                    "RPG/MMORPG > Sim > Combat",
+                    "LeftAction::MenuMmoSim::Combat",
+                    "Run one MMO combat simulation step",
+                ),
+                (
+                    "RPG/MMORPG > Sim > Loot",
+                    "LeftAction::MenuMmoSim::Loot",
+                    "Run one MMO loot simulation step",
+                ),
+                (
+                    "Map Forge > Open Editor",
+                    "LeftAction::MenuMapForge::OpenEditor",
+                    "Open Map Forge editor mode",
+                ),
+                (
+                    "Map Forge > Tools > Select",
+                    "LeftAction::MenuMapForge::ToolSelect",
+                    "Use map selection tool",
+                ),
+                (
+                    "Map Forge > Tools > Terrain",
+                    "LeftAction::MenuMapForge::ToolTerrain",
+                    "Use terrain/world sculpt tool",
+                ),
+                (
+                    "Map Forge > Tools > Roads",
+                    "LeftAction::MenuMapForge::ToolRoad",
+                    "Use linedef road editing tool",
+                ),
+                (
+                    "Map Forge > Tools > Districts",
+                    "LeftAction::MenuMapForge::ToolDistrict",
+                    "Use sector district editing tool",
+                ),
+                (
+                    "Map Forge > Tools > Landmarks",
+                    "LeftAction::MenuMapForge::ToolLandmark",
+                    "Use entity landmark placement tool",
+                ),
+                (
+                    "Map Forge > Layers > Districts",
+                    "LeftAction::MenuMapForge::LayerDistricts",
+                    "Toggle district overlay visibility",
+                ),
+                (
+                    "Map Forge > Layers > Roads",
+                    "LeftAction::MenuMapForge::LayerRoads",
+                    "Toggle road overlay visibility",
+                ),
+                (
+                    "Map Forge > Layers > Landmarks",
+                    "LeftAction::MenuMapForge::LayerLandmarks",
+                    "Toggle landmark overlay visibility",
+                ),
+                (
+                    "Map Forge > Generate > Town",
+                    "LeftAction::MenuMapForge::GenerateTown",
+                    "Generate a town map",
+                ),
+                (
+                    "Map Forge > Generate > Fantasy World",
+                    "LeftAction::MenuMapForge::GenerateFantasyWorld",
+                    "Generate a fantasy world map",
+                ),
+                (
+                    "Map Forge > Generate > Reseed Town",
+                    "LeftAction::MenuMapForge::ReseedTown",
+                    "Generate town with a new seed",
+                ),
+                (
+                    "Map Forge > Generate > Regenerate Town",
+                    "LeftAction::MenuMapForge::RegenerateTown",
+                    "Regenerate town with current seed",
+                ),
+                (
+                    "Map Forge > IO > Export JSON",
+                    "LeftAction::MenuMapForge::ExportJson",
+                    "Export generated map JSON",
+                ),
+                (
+                    "Map Forge > IO > Import JSON",
+                    "LeftAction::MenuMapForge::ImportJson",
+                    "Import map JSON",
+                ),
+                (
+                    "Map Forge > IO > Bake To Map",
+                    "LeftAction::MenuMapForge::BakeMap",
+                    "Bake generated town data into current map",
+                ),
+            ];
+            for (label, id, status) in tool_actions {
+                add_left_action(layout, "Tools", label, id, status);
             }
         }
 
-        let mut add_left_action = |label: &str, id: &str, icon: &str, status: &str| {
-            let mut button = TheMenubarButton::new(TheId::named(id));
-            button.set_icon_name(icon.to_string());
-            button.set_status_text(status);
-            layout.add_pair(format!("  {}", label), Box::new(button));
-        };
+        add_section_toggle(
+            layout,
+            "Project & Edit",
+            "LeftGroupToggle::2D",
+            self.left_group_2d_expanded,
+            "Toggle file/edit/view submenu",
+        );
+        if self.left_group_2d_expanded {
+            let project_actions = [
+                ("File", "New", "LeftAction::MenuFile::New", "Create a new project"),
+                (
+                    "File",
+                    "Open",
+                    "LeftAction::MenuFile::Open",
+                    "Open an existing project",
+                ),
+                ("File", "Save", "LeftAction::MenuFile::Save", "Save current project"),
+                (
+                    "File",
+                    "Save As",
+                    "LeftAction::MenuFile::SaveAs",
+                    "Save current project under a new name",
+                ),
+                (
+                    "File",
+                    "Close Project",
+                    "LeftAction::MenuFile::Close",
+                    "Close current project",
+                ),
+                ("Edit", "Undo", "LeftAction::MenuEdit::Undo", "Undo last change"),
+                ("Edit", "Redo", "LeftAction::MenuEdit::Redo", "Redo last undone change"),
+                (
+                    "Edit",
+                    "Copy",
+                    "LeftAction::MenuEdit::Copy",
+                    "Copy current selection",
+                ),
+                (
+                    "Edit",
+                    "Paste",
+                    "LeftAction::MenuEdit::Paste",
+                    "Paste from clipboard",
+                ),
+                (
+                    "View",
+                    "Toggle Left Toolbar",
+                    "LeftAction::MenuView::ToggleLeft",
+                    "Toggle left toolbar visibility",
+                ),
+                (
+                    "View",
+                    "Toggle Right Toolbar",
+                    "LeftAction::MenuView::ToggleRight",
+                    "Toggle right toolbar visibility",
+                ),
+                (
+                    "View",
+                    "Theme > Dark",
+                    "LeftAction::MenuTheme::Dark",
+                    "Apply dark theme",
+                ),
+                (
+                    "View",
+                    "Theme > Light",
+                    "LeftAction::MenuTheme::Light",
+                    "Apply light theme",
+                ),
+                (
+                    "View",
+                    "Theme > Slate",
+                    "LeftAction::MenuTheme::Slate",
+                    "Apply slate theme",
+                ),
+                (
+                    "Select",
+                    "Select All",
+                    "LeftAction::MenuSelect::All",
+                    "Select all relevant map content",
+                ),
+                (
+                    "Select",
+                    "Select None",
+                    "LeftAction::MenuSelect::None",
+                    "Clear current selection",
+                ),
+                (
+                    "Actor",
+                    "Place > Entity",
+                    "LeftAction::MenuActor::PlaceEntity",
+                    "Switch to entity placement tool",
+                ),
+                (
+                    "Actor",
+                    "Snap To Grid",
+                    "LeftAction::MenuActor::SnapToGrid",
+                    "Toggle actor snapping behavior",
+                ),
+                (
+                    "Blueprint",
+                    "Open Blueprint Panel",
+                    "LeftAction::MenuBlueprint::OpenPanel",
+                    "Open blueprint panel snapshot",
+                ),
+                (
+                    "Cinematics",
+                    "Create Level Sequence",
+                    "LeftAction::MenuCinematics::CreateSequence",
+                    "Create a level sequence scaffold",
+                ),
+                (
+                    "Modes",
+                    "Select",
+                    "LeftAction::MenuMode::Select",
+                    "Switch to selection mode",
+                ),
+                (
+                    "Modes",
+                    "Landscape",
+                    "LeftAction::MenuMode::Landscape",
+                    "Switch to landscape editing mode",
+                ),
+                (
+                    "Modes",
+                    "Foliage",
+                    "LeftAction::MenuMode::Foliage",
+                    "Switch to foliage/entity painting mode",
+                ),
+                (
+                    "Modes",
+                    "Game View",
+                    "LeftAction::MenuMode::GameView",
+                    "Toggle game input mode",
+                ),
+                (
+                    "Platforms",
+                    "Package > Windows",
+                    "LeftAction::MenuPlatforms::PackageWindows",
+                    "Export/package for Windows",
+                ),
+                (
+                    "Platforms",
+                    "Package > Linux",
+                    "LeftAction::MenuPlatforms::PackageLinux",
+                    "Export/package for Linux",
+                ),
+                (
+                    "Platforms",
+                    "Package > Web",
+                    "LeftAction::MenuPlatforms::PackageWeb",
+                    "Export/package for Web",
+                ),
+                (
+                    "Layouts",
+                    "Window > Unreal",
+                    "LeftAction::MenuLayouts::Unreal",
+                    "Apply Unreal-like layout preset",
+                ),
+                (
+                    "Layouts",
+                    "Window > Minimal",
+                    "LeftAction::MenuLayouts::Minimal",
+                    "Apply minimal layout preset",
+                ),
+                (
+                    "Debug",
+                    "Toggle Runtime",
+                    "LeftAction::MenuDebug::ToggleRuntime",
+                    "Toggle game runtime play/stop",
+                ),
+                (
+                    "Debug",
+                    "Show Feature Matrix",
+                    "LeftAction::MenuDebug::FeatureMatrix",
+                    "Open IDE feature matrix",
+                ),
+                (
+                    "Source",
+                    "Submit Content",
+                    "LeftAction::MenuSource::SubmitContent",
+                    "Open source control submit flow",
+                ),
+            ];
+            for (section, label, id, status) in project_actions {
+                add_left_action(layout, section, label, id, status);
+            }
+        }
 
-        add_left_action(
-            "Town / Generate",
-            "LeftAction::MenuTools::GenerateTown",
-            "wand-magic-sparkles",
-            "Generate town systems from left toolbar",
+        add_section_toggle(
+            layout,
+            "Build & Settings",
+            "LeftGroupToggle::3D",
+            self.left_group_3d_expanded,
+            "Toggle build/settings submenu",
         );
-        add_left_action(
-            "Fantasy / Generate World",
-            "LeftAction::MenuTools::GenerateFantasyWorld",
-            "globe",
-            "Generate continents, countries, and capitals",
+        if self.left_group_3d_expanded {
+            let runtime_actions = [
+                ("Build", "Play", "LeftAction::MenuBuild::Play", "Run the game"),
+                ("Build", "Pause", "LeftAction::MenuBuild::Pause", "Pause runtime"),
+                ("Build", "Stop", "LeftAction::MenuBuild::Stop", "Stop runtime"),
+                (
+                    "Build",
+                    "Export 2D",
+                    "LeftAction::MenuBuild::Export2D",
+                    "Export 2D package",
+                ),
+                (
+                    "Build",
+                    "Export 3D",
+                    "LeftAction::MenuBuild::Export3D",
+                    "Export 3D package",
+                ),
+                (
+                    "Settings",
+                    "Toggle Snap",
+                    "LeftAction::MenuOption::Snap",
+                    "Toggle snap-to-grid option",
+                ),
+                (
+                    "Settings",
+                    "Toggle Grid",
+                    "LeftAction::MenuOption::Grid",
+                    "Toggle grid visibility option",
+                ),
+                (
+                    "Settings",
+                    "Toggle Gizmos",
+                    "LeftAction::MenuOption::Gizmos",
+                    "Toggle gizmo visibility option",
+                ),
+                (
+                    "Settings",
+                    "IDE Layout > Unreal",
+                    "LeftAction::MenuIde::LayoutUnreal",
+                    "Apply Unreal-like IDE layout preset",
+                ),
+                (
+                    "Settings",
+                    "IDE Layout > Minimal",
+                    "LeftAction::MenuIde::LayoutMinimal",
+                    "Apply minimal IDE layout preset",
+                ),
+                (
+                    "Settings",
+                    "IDE Feature Matrix",
+                    "LeftAction::MenuIde::FeatureMatrix",
+                    "Open IDE feature matrix",
+                ),
+            ];
+            for (section, label, id, status) in runtime_actions {
+                add_left_action(layout, section, label, id, status);
+            }
+        }
+
+        add_section_toggle(
+            layout,
+            "Panels & Help",
+            "LeftGroupToggle::Editor",
+            self.left_group_editor_expanded,
+            "Toggle window/help submenu",
         );
-        add_left_action(
-            "Town / Bake To Map",
-            "LeftAction::MenuTown::BakeMap",
-            "map",
-            "Bake generated town into the current map",
-        );
-        add_left_action(
-            "MMO / Generate",
-            "LeftAction::MenuTools::GenerateRpgMmorpg",
-            "gear",
-            "Generate RPG/MMORPG systems",
-        );
-        add_left_action(
-            "MMO / Builder",
-            "LeftAction::MenuMmorpgBuilder::Open",
-            "list",
-            "Open RPG/MMORPG builder summary",
-        );
-        add_left_action(
-            "MMO / Sim Tick",
-            "LeftAction::MenuMmoSim::Tick",
-            "clock",
-            "Run one MMO simulation tick",
-        );
-        add_left_action(
-            "Help / Docs",
-            "LeftAction::MenuHelp::Docs",
-            "question-mark",
-            "Open help documentation",
-        );
-        add_left_action(
-            "IDE / Feature Matrix",
-            "LeftAction::MenuIde::FeatureMatrix",
-            "list",
-            "Open IDE feature matrix",
-        );
-        add_left_action(
-            "Window / Content Browser",
-            "LeftAction::MenuWindow::ContentBrowser",
-            "folder",
-            "Open content browser panel",
-        );
-        add_left_action(
-            "Window / World Outliner",
-            "LeftAction::MenuWindow::WorldOutliner",
-            "list",
-            "Open world outliner panel",
-        );
-        add_left_action(
-            "Window / Details",
-            "LeftAction::MenuWindow::Details",
-            "gear",
-            "Open details panel",
-        );
-        add_left_action(
-            "Help / About",
-            "LeftAction::MenuHelp::About",
-            "info",
-            "Open app about dialog",
-        );
+        if self.left_group_editor_expanded {
+            let panel_actions = [
+                (
+                    "Window",
+                    "Content Browser",
+                    "LeftAction::MenuWindow::ContentBrowser",
+                    "Open content browser panel",
+                ),
+                (
+                    "Window",
+                    "World Outliner",
+                    "LeftAction::MenuWindow::WorldOutliner",
+                    "Open world outliner panel",
+                ),
+                (
+                    "Window",
+                    "Details",
+                    "LeftAction::MenuWindow::Details",
+                    "Open details panel",
+                ),
+                (
+                    "Window",
+                    "Output Log",
+                    "LeftAction::MenuWindow::OutputLog",
+                    "Open output log panel",
+                ),
+                (
+                    "Window",
+                    "Blueprint",
+                    "LeftAction::MenuWindow::Blueprint",
+                    "Open blueprint panel",
+                ),
+                (
+                    "Help",
+                    "Docs",
+                    "LeftAction::MenuHelp::Docs",
+                    "Open help documentation",
+                ),
+                (
+                    "Help",
+                    "Examples",
+                    "LeftAction::MenuHelp::Examples",
+                    "Open examples page",
+                ),
+                (
+                    "Help",
+                    "About",
+                    "LeftAction::MenuHelp::About",
+                    "Open app about dialog",
+                ),
+            ];
+            for (section, label, id, status) in panel_actions {
+                add_left_action(layout, section, label, id, status);
+            }
+        }
     }
 
     fn rebuild_left_tool_name_layout(&mut self, ui: &mut TheUI, ctx: &mut TheContext) {
@@ -1756,7 +2290,7 @@ impl Editor {
             tg.insert(
                 "source".to_string(),
                 toml::Value::String(
-                    "Inspired by watabou/TownGeneratorOS, adapted for Encheament Engine"
+                    "Inspired by watabou/MapForge (formerly TownGeneratorOS), adapted for Enchentment Engine"
                         .to_string(),
                 ),
             );
@@ -2044,7 +2578,7 @@ impl Editor {
         layout.set_padding(6);
         let mut txt = TheText::new(TheId::named("Fantasy World Generator Result Text"));
         txt.set_text(format!(
-            "Fantasy world generated (TownGeneratorOS-style world + town layering).\n\
+            "Fantasy world generated (MapForge-style world + town layering).\n\
              World: {}\n\
              Seed: {}\n\
              Continents: {}\n\
@@ -2637,7 +3171,9 @@ impl TheTrait for Editor {
         let mut time_slider = TheTimeSlider::new(TheId::named("Server Time Slider"));
         time_slider.set_status_text(&fl!("status_time_slider"));
         time_slider.set_continuous(true);
-        time_slider.limiter_mut().set_max_width(400);
+        time_slider
+            .limiter_mut()
+            .set_max_width(((ctx.width as i32 * 22) / 100).clamp(140, 320));
         time_slider.set_value(TheValue::Time(TheTime::default()));
 
         let mut patreon_button = TheMenubarButton::new(TheId::named("Patreon"));
@@ -2650,6 +3186,58 @@ impl TheTrait for Editor {
         help_button.set_icon_name("question-mark".to_string());
         help_button.set_has_state(true);
         help_button.set_icon_offset(Vec2::new(-2, -2));
+
+        let mut quick_layouts_button = TheMenubarButton::new(TheId::named("TopQuickLayouts"));
+        quick_layouts_button.set_status_text("Apply Unreal-like window layout");
+        quick_layouts_button.set_icon_name("window".to_string());
+
+        let mut quick_debug_toggle_button =
+            TheMenubarButton::new(TheId::named("TopQuickDebugToggle"));
+        quick_debug_toggle_button.set_status_text("Toggle runtime (play/stop)");
+        quick_debug_toggle_button.set_icon_name("bug".to_string());
+
+        let mut quick_debug_tick_button = TheMenubarButton::new(TheId::named("TopQuickDebugTick"));
+        quick_debug_tick_button.set_status_text("Run one debug simulation tick");
+        quick_debug_tick_button.set_icon_name("activity".to_string());
+
+        let mut quick_source_submit_button =
+            TheMenubarButton::new(TheId::named("TopQuickSourceSubmit"));
+        quick_source_submit_button.set_status_text("Submit source control content");
+        quick_source_submit_button.set_icon_name("upload".to_string());
+
+        let mut quick_source_sync_button =
+            TheMenubarButton::new(TheId::named("TopQuickSourceSync"));
+        quick_source_sync_button.set_status_text("Sync source control");
+        quick_source_sync_button.set_icon_name("arrow-clockwise".to_string());
+
+        let mut quick_mode_select_button = TheMenubarButton::new(TheId::named("TopQuickModeSelect"));
+        quick_mode_select_button.set_status_text("Switch to Select mode");
+        quick_mode_select_button.set_icon_name("cursor".to_string());
+
+        let mut quick_mode_landscape_button =
+            TheMenubarButton::new(TheId::named("TopQuickModeLandscape"));
+        quick_mode_landscape_button.set_status_text("Switch to Landscape mode");
+        quick_mode_landscape_button.set_icon_name("map".to_string());
+
+        let mut quick_platform_windows_button =
+            TheMenubarButton::new(TheId::named("TopQuickPlatformWindows"));
+        quick_platform_windows_button.set_status_text("Package project for Windows");
+        quick_platform_windows_button.set_icon_name("box".to_string());
+
+        let mut quick_platform_web_button =
+            TheMenubarButton::new(TheId::named("TopQuickPlatformWeb"));
+        quick_platform_web_button.set_status_text("Package project for Web");
+        quick_platform_web_button.set_icon_name("globe".to_string());
+
+        let mut quick_mapforge_open_button =
+            TheMenubarButton::new(TheId::named("TopQuickMapForgeOpen"));
+        quick_mapforge_open_button.set_status_text("Open Map Forge editor");
+        quick_mapforge_open_button.set_icon_name("compass".to_string());
+
+        let mut quick_mapforge_generate_button =
+            TheMenubarButton::new(TheId::named("TopQuickMapForgeGenerateTown"));
+        quick_mapforge_generate_button.set_status_text("Generate Map Forge town");
+        quick_mapforge_generate_button.set_icon_name("sparkle".to_string());
 
         #[cfg(all(not(target_arch = "wasm32"), feature = "self-update"))]
         let mut update_button = {
@@ -2676,6 +3264,21 @@ impl TheTrait for Editor {
         hlayout.add_widget(Box::new(pause_button));
         hlayout.add_widget(Box::new(stop_button));
         hlayout.add_widget(Box::new(input_button));
+        hlayout.add_widget(Box::new(TheMenubarSeparator::new(TheId::empty())));
+        hlayout.add_widget(Box::new(quick_layouts_button));
+        hlayout.add_widget(Box::new(quick_debug_toggle_button));
+        hlayout.add_widget(Box::new(quick_debug_tick_button));
+        hlayout.add_widget(Box::new(quick_source_submit_button));
+        hlayout.add_widget(Box::new(quick_source_sync_button));
+        hlayout.add_widget(Box::new(TheMenubarSeparator::new(TheId::empty())));
+        hlayout.add_widget(Box::new(quick_mode_select_button));
+        hlayout.add_widget(Box::new(quick_mode_landscape_button));
+        hlayout.add_widget(Box::new(TheMenubarSeparator::new(TheId::empty())));
+        hlayout.add_widget(Box::new(quick_platform_windows_button));
+        hlayout.add_widget(Box::new(quick_platform_web_button));
+        hlayout.add_widget(Box::new(TheMenubarSeparator::new(TheId::empty())));
+        hlayout.add_widget(Box::new(quick_mapforge_open_button));
+        hlayout.add_widget(Box::new(quick_mapforge_generate_button));
         hlayout.add_widget(Box::new(TheMenubarSeparator::new(TheId::empty())));
         hlayout.add_widget(Box::new(time_slider));
 
@@ -2725,16 +3328,274 @@ impl TheTrait for Editor {
         view_menu.add(TheContextMenuItem::new("Theme: Light".to_string(), TheId::named("MenuTheme::Light")));
         view_menu.add(TheContextMenuItem::new("Theme: Slate".to_string(), TheId::named("MenuTheme::Slate")));
 
+        let mut select_filter_menu = TheContextMenu::named("Select Filter".to_string());
+        select_filter_menu.add(TheContextMenuItem::new(
+            "Geometry".to_string(),
+            TheId::named("MenuSelect::FilterGeometry"),
+        ));
+        select_filter_menu.add(TheContextMenuItem::new(
+            "Entities".to_string(),
+            TheId::named("MenuSelect::FilterEntity"),
+        ));
+        select_filter_menu.add(TheContextMenuItem::new(
+            "Landmarks".to_string(),
+            TheId::named("MenuSelect::FilterLandmark"),
+        ));
+        let mut select_menu = TheContextMenu::named("Select".to_string());
+        select_menu.add(TheContextMenuItem::new(
+            "Select All".to_string(),
+            TheId::named("MenuSelect::All"),
+        ));
+        select_menu.add(TheContextMenuItem::new(
+            "Select None".to_string(),
+            TheId::named("MenuSelect::None"),
+        ));
+        select_menu.add(TheContextMenuItem::new(
+            "Invert Selection".to_string(),
+            TheId::named("MenuSelect::Invert"),
+        ));
+        select_menu.add(TheContextMenuItem::new_submenu(
+            "Filter".to_string(),
+            TheId::named("MenuSelect::Filter"),
+            select_filter_menu,
+        ));
+
+        let mut actor_place_menu = TheContextMenu::named("Actor Placement".to_string());
+        actor_place_menu.add(TheContextMenuItem::new(
+            "Entity".to_string(),
+            TheId::named("MenuActor::PlaceEntity"),
+        ));
+        actor_place_menu.add(TheContextMenuItem::new(
+            "Landmark".to_string(),
+            TheId::named("MenuActor::PlaceLandmark"),
+        ));
+        actor_place_menu.add(TheContextMenuItem::new(
+            "Terrain Brush".to_string(),
+            TheId::named("MenuActor::PlaceTerrain"),
+        ));
+        let mut actor_menu = TheContextMenu::named("Actor".to_string());
+        actor_menu.add(TheContextMenuItem::new_submenu(
+            "Place Actor".to_string(),
+            TheId::named("MenuActor::Place"),
+            actor_place_menu,
+        ));
+        actor_menu.add(TheContextMenuItem::new(
+            "Align To Grid".to_string(),
+            TheId::named("MenuActor::AlignToGrid"),
+        ));
+        actor_menu.add(TheContextMenuItem::new(
+            "Snap To Grid".to_string(),
+            TheId::named("MenuActor::SnapToGrid"),
+        ));
+        actor_menu.add(TheContextMenuItem::new(
+            "Focus Selection".to_string(),
+            TheId::named("MenuActor::FocusSelection"),
+        ));
+
+        let mut blueprint_create_menu = TheContextMenu::named("Create Blueprint".to_string());
+        blueprint_create_menu.add(TheContextMenuItem::new(
+            "Character Blueprint".to_string(),
+            TheId::named("MenuBlueprint::CreateCharacter"),
+        ));
+        blueprint_create_menu.add(TheContextMenuItem::new(
+            "Item Blueprint".to_string(),
+            TheId::named("MenuBlueprint::CreateItem"),
+        ));
+        blueprint_create_menu.add(TheContextMenuItem::new(
+            "Quest Blueprint".to_string(),
+            TheId::named("MenuBlueprint::CreateQuest"),
+        ));
+        let mut blueprint_menu = TheContextMenu::named("Blueprint".to_string());
+        blueprint_menu.add(TheContextMenuItem::new(
+            "Open Blueprint Panel".to_string(),
+            TheId::named("MenuBlueprint::OpenPanel"),
+        ));
+        blueprint_menu.add(TheContextMenuItem::new_submenu(
+            "Create".to_string(),
+            TheId::named("MenuBlueprint::Create"),
+            blueprint_create_menu,
+        ));
+        blueprint_menu.add(TheContextMenuItem::new(
+            "Compile All Blueprints".to_string(),
+            TheId::named("MenuBlueprint::CompileAll"),
+        ));
+        blueprint_menu.add(TheContextMenuItem::new(
+            "Validate Blueprint Links".to_string(),
+            TheId::named("MenuBlueprint::Validate"),
+        ));
+
+        let mut cinematics_menu = TheContextMenu::named("Cinematics".to_string());
+        cinematics_menu.add(TheContextMenuItem::new(
+            "Create Level Sequence".to_string(),
+            TheId::named("MenuCinematics::CreateSequence"),
+        ));
+        cinematics_menu.add(TheContextMenuItem::new(
+            "Add Camera Track".to_string(),
+            TheId::named("MenuCinematics::AddCameraTrack"),
+        ));
+        cinematics_menu.add(TheContextMenuItem::new(
+            "Play Sequence".to_string(),
+            TheId::named("MenuCinematics::PlaySequence"),
+        ));
+
+        let mut modes_menu = TheContextMenu::named("Modes".to_string());
+        modes_menu.add(TheContextMenuItem::new(
+            "Select Mode".to_string(),
+            TheId::named("MenuMode::Select"),
+        ));
+        modes_menu.add(TheContextMenuItem::new(
+            "Landscape Mode".to_string(),
+            TheId::named("MenuMode::Landscape"),
+        ));
+        modes_menu.add(TheContextMenuItem::new(
+            "Modeling Mode".to_string(),
+            TheId::named("MenuMode::Modeling"),
+        ));
+        modes_menu.add(TheContextMenuItem::new(
+            "Foliage Mode".to_string(),
+            TheId::named("MenuMode::Foliage"),
+        ));
+        modes_menu.add(TheContextMenuItem::new(
+            "Brush Editing Mode".to_string(),
+            TheId::named("MenuMode::BrushEditing"),
+        ));
+        modes_menu.add(TheContextMenuItem::new(
+            "Animation Mode".to_string(),
+            TheId::named("MenuMode::Animation"),
+        ));
+        modes_menu.add_separator();
+        modes_menu.add(TheContextMenuItem::new(
+            "Game View".to_string(),
+            TheId::named("MenuMode::GameView"),
+        ));
+
+        let mut platforms_package_menu = TheContextMenu::named("Package Project".to_string());
+        platforms_package_menu.add(TheContextMenuItem::new(
+            "Windows".to_string(),
+            TheId::named("MenuPlatforms::PackageWindows"),
+        ));
+        platforms_package_menu.add(TheContextMenuItem::new(
+            "Linux".to_string(),
+            TheId::named("MenuPlatforms::PackageLinux"),
+        ));
+        platforms_package_menu.add(TheContextMenuItem::new(
+            "macOS".to_string(),
+            TheId::named("MenuPlatforms::PackageMac"),
+        ));
+        platforms_package_menu.add(TheContextMenuItem::new(
+            "Web".to_string(),
+            TheId::named("MenuPlatforms::PackageWeb"),
+        ));
+
+        let mut platforms_menu = TheContextMenu::named("Platforms".to_string());
+        platforms_menu.add(TheContextMenuItem::new_submenu(
+            "Package Project".to_string(),
+            TheId::named("MenuPlatforms::Package"),
+            platforms_package_menu,
+        ));
+        platforms_menu.add(TheContextMenuItem::new(
+            "Project Settings".to_string(),
+            TheId::named("MenuPlatforms::ProjectSettings"),
+        ));
+        platforms_menu.add(TheContextMenuItem::new(
+            "Device Manager".to_string(),
+            TheId::named("MenuPlatforms::DeviceManager"),
+        ));
+        platforms_menu.add(TheContextMenuItem::new(
+            "SDK Manager".to_string(),
+            TheId::named("MenuPlatforms::SdkManager"),
+        ));
+
+        let mut layouts_menu = TheContextMenu::named("Window Layouts".to_string());
+        layouts_menu.add(TheContextMenuItem::new(
+            "Unreal-like Layout".to_string(),
+            TheId::named("MenuLayouts::Unreal"),
+        ));
+        layouts_menu.add(TheContextMenuItem::new(
+            "Minimal Layout".to_string(),
+            TheId::named("MenuLayouts::Minimal"),
+        ));
+        layouts_menu.add(TheContextMenuItem::new(
+            "Feature Matrix".to_string(),
+            TheId::named("MenuLayouts::FeatureMatrix"),
+        ));
+
+        let mut debug_menu = TheContextMenu::named("Debug".to_string());
+        debug_menu.add(TheContextMenuItem::new(
+            "Toggle Runtime".to_string(),
+            TheId::named("MenuDebug::ToggleRuntime"),
+        ));
+        debug_menu.add(TheContextMenuItem::new(
+            "Run Sim Tick".to_string(),
+            TheId::named("MenuDebug::SimTick"),
+        ));
+        debug_menu.add(TheContextMenuItem::new(
+            "Run Sim Combat".to_string(),
+            TheId::named("MenuDebug::SimCombat"),
+        ));
+        debug_menu.add(TheContextMenuItem::new(
+            "Run Sim Loot".to_string(),
+            TheId::named("MenuDebug::SimLoot"),
+        ));
+        debug_menu.add(TheContextMenuItem::new(
+            "Show Feature Matrix".to_string(),
+            TheId::named("MenuDebug::FeatureMatrix"),
+        ));
+
+        let mut source_control_menu = TheContextMenu::named("Source Control".to_string());
+        source_control_menu.add(TheContextMenuItem::new(
+            "Connect".to_string(),
+            TheId::named("MenuSource::Connect"),
+        ));
+        source_control_menu.add(TheContextMenuItem::new(
+            "Submit Content".to_string(),
+            TheId::named("MenuSource::SubmitContent"),
+        ));
+        source_control_menu.add(TheContextMenuItem::new(
+            "Sync".to_string(),
+            TheId::named("MenuSource::Sync"),
+        ));
+        source_control_menu.add(TheContextMenuItem::new(
+            "Revert Unchanged".to_string(),
+            TheId::named("MenuSource::RevertUnchanged"),
+        ));
+
         let mut tools_2d = TheContextMenu::named("2D".to_string());
         tools_2d.add(TheContextMenuItem::new("Selection".to_string(), TheId::named("MenuTool::Select Tool")));
         tools_2d.add(TheContextMenuItem::new("Vertex".to_string(), TheId::named("MenuTool::Vertex Tool")));
         tools_2d.add(TheContextMenuItem::new("Linedef".to_string(), TheId::named("MenuTool::Linedef Tool")));
         tools_2d.add(TheContextMenuItem::new("Sector".to_string(), TheId::named("MenuTool::Sector Tool")));
+        tools_2d.add(TheContextMenuItem::new("Rect".to_string(), TheId::named("MenuTool::Rect Tool")));
 
         let mut tools_3d = TheContextMenu::named("3D".to_string());
         tools_3d.add(TheContextMenuItem::new("Terrain".to_string(), TheId::named("MenuTool::World Tool")));
         tools_3d.add(TheContextMenuItem::new("Render".to_string(), TheId::named("MenuTool::Render Tool")));
         tools_3d.add(TheContextMenuItem::new("Entity".to_string(), TheId::named("MenuTool::Entity Tool")));
+        tools_3d.add(TheContextMenuItem::new("Game Runtime".to_string(), TheId::named("MenuTool::Game Tool")));
+
+        let mut tools_editor = TheContextMenu::named("Editor".to_string());
+        tools_editor.add(TheContextMenuItem::new("Code".to_string(), TheId::named("MenuTool::Code Tool")));
+        tools_editor.add(TheContextMenuItem::new("Data".to_string(), TheId::named("MenuTool::Data Tool")));
+        tools_editor.add(TheContextMenuItem::new("Tileset".to_string(), TheId::named("MenuTool::Tileset Tool")));
+        tools_editor.add(TheContextMenuItem::new("Config".to_string(), TheId::named("MenuTool::Config Tool")));
+        tools_editor.add(TheContextMenuItem::new("Info".to_string(), TheId::named("MenuTool::Info Tool")));
+
+        let mut all_tools_menu = TheContextMenu::named("All Tools".to_string());
+        if let Ok(toollist) = TOOLLIST.read() {
+            for tool in &toollist.game_tools {
+                let tool_name = tool.id().name.clone();
+                let tool_label = tool
+                    .id()
+                    .name
+                    .strip_suffix(" Tool")
+                    .unwrap_or(&tool.id().name)
+                    .to_string();
+                all_tools_menu.add(TheContextMenuItem::new(
+                    tool_label,
+                    TheId::named(&format!("MenuTool::{}", tool_name)),
+                ));
+            }
+        }
 
         let mut tools_menu = TheContextMenu::named("Tools".to_string());
         tools_menu.add(TheContextMenuItem::new_submenu(
@@ -2747,11 +3608,16 @@ impl TheTrait for Editor {
             TheId::named("MenuTools::3D"),
             tools_3d,
         ));
-        tools_menu.add_separator();
-        tools_menu.add(TheContextMenuItem::new("Code".to_string(), TheId::named("MenuTool::Code Tool")));
-        tools_menu.add(TheContextMenuItem::new("Data".to_string(), TheId::named("MenuTool::Data Tool")));
-        tools_menu.add(TheContextMenuItem::new("Config".to_string(), TheId::named("MenuTool::Config Tool")));
-        tools_menu.add(TheContextMenuItem::new("Info".to_string(), TheId::named("MenuTool::Info Tool")));
+        tools_menu.add(TheContextMenuItem::new_submenu(
+            "Editor Tools".to_string(),
+            TheId::named("MenuTools::Editor"),
+            tools_editor,
+        ));
+        tools_menu.add(TheContextMenuItem::new_submenu(
+            "All Tools".to_string(),
+            TheId::named("MenuTools::All"),
+            all_tools_menu,
+        ));
         tools_menu.add_separator();
         tools_menu.add(TheContextMenuItem::new(
             "Generate Town (Watabou-style)".to_string(),
@@ -2864,6 +3730,106 @@ impl TheTrait for Editor {
             mmo_ops_menu,
         ));
 
+        let mut map_forge_tools_menu = TheContextMenu::named("Map Forge Tools".to_string());
+        map_forge_tools_menu.add(TheContextMenuItem::new(
+            "Open Map Editor".to_string(),
+            TheId::named("MenuMapForge::OpenEditor"),
+        ));
+        map_forge_tools_menu.add(TheContextMenuItem::new(
+            "Tool: Select".to_string(),
+            TheId::named("MenuMapForge::ToolSelect"),
+        ));
+        map_forge_tools_menu.add(TheContextMenuItem::new(
+            "Tool: Terrain".to_string(),
+            TheId::named("MenuMapForge::ToolTerrain"),
+        ));
+        map_forge_tools_menu.add(TheContextMenuItem::new(
+            "Tool: Roads".to_string(),
+            TheId::named("MenuMapForge::ToolRoad"),
+        ));
+        map_forge_tools_menu.add(TheContextMenuItem::new(
+            "Tool: Districts".to_string(),
+            TheId::named("MenuMapForge::ToolDistrict"),
+        ));
+        map_forge_tools_menu.add(TheContextMenuItem::new(
+            "Tool: Landmarks".to_string(),
+            TheId::named("MenuMapForge::ToolLandmark"),
+        ));
+
+        let mut map_forge_layers_menu = TheContextMenu::named("Map Forge Layers".to_string());
+        map_forge_layers_menu.add(TheContextMenuItem::new(
+            "Toggle Districts".to_string(),
+            TheId::named("MenuMapForge::LayerDistricts"),
+        ));
+        map_forge_layers_menu.add(TheContextMenuItem::new(
+            "Toggle Roads".to_string(),
+            TheId::named("MenuMapForge::LayerRoads"),
+        ));
+        map_forge_layers_menu.add(TheContextMenuItem::new(
+            "Toggle Landmarks".to_string(),
+            TheId::named("MenuMapForge::LayerLandmarks"),
+        ));
+
+        let mut map_forge_generate_menu = TheContextMenu::named("Map Forge Generate".to_string());
+        map_forge_generate_menu.add(TheContextMenuItem::new(
+            "Generate Town".to_string(),
+            TheId::named("MenuMapForge::GenerateTown"),
+        ));
+        map_forge_generate_menu.add(TheContextMenuItem::new(
+            "Generate Fantasy World".to_string(),
+            TheId::named("MenuMapForge::GenerateFantasyWorld"),
+        ));
+        map_forge_generate_menu.add(TheContextMenuItem::new(
+            "Reseed + Generate Town".to_string(),
+            TheId::named("MenuMapForge::ReseedTown"),
+        ));
+        map_forge_generate_menu.add(TheContextMenuItem::new(
+            "Regenerate Town".to_string(),
+            TheId::named("MenuMapForge::RegenerateTown"),
+        ));
+
+        let mut map_forge_io_menu = TheContextMenu::named("Map Forge IO".to_string());
+        map_forge_io_menu.add(TheContextMenuItem::new(
+            "Export JSON".to_string(),
+            TheId::named("MenuMapForge::ExportJson"),
+        ));
+        map_forge_io_menu.add(TheContextMenuItem::new(
+            "Import JSON".to_string(),
+            TheId::named("MenuMapForge::ImportJson"),
+        ));
+        map_forge_io_menu.add(TheContextMenuItem::new(
+            "Bake To Current Map".to_string(),
+            TheId::named("MenuMapForge::BakeMap"),
+        ));
+
+        let mut map_forge_systems_menu = TheContextMenu::named("Map Forge Systems".to_string());
+        map_forge_systems_menu.add(TheContextMenuItem::new_submenu(
+            "Editor".to_string(),
+            TheId::named("MenuMapForge::Editor"),
+            map_forge_tools_menu,
+        ));
+        map_forge_systems_menu.add(TheContextMenuItem::new_submenu(
+            "Layers".to_string(),
+            TheId::named("MenuMapForge::Layers"),
+            map_forge_layers_menu,
+        ));
+        map_forge_systems_menu.add(TheContextMenuItem::new_submenu(
+            "Generate".to_string(),
+            TheId::named("MenuMapForge::Generate"),
+            map_forge_generate_menu,
+        ));
+        map_forge_systems_menu.add(TheContextMenuItem::new_submenu(
+            "Import / Export".to_string(),
+            TheId::named("MenuMapForge::IO"),
+            map_forge_io_menu,
+        ));
+
+        tools_menu.add(TheContextMenuItem::new_submenu(
+            "Map Forge Systems".to_string(),
+            TheId::named("MenuTools::MapForgeSystems"),
+            map_forge_systems_menu,
+        ));
+
         let mut build_menu = TheContextMenu::named("Build".to_string());
         build_menu.add(TheContextMenuItem::new("Play".to_string(), TheId::named("MenuBuild::Play")));
         build_menu.add(TheContextMenuItem::new("Pause".to_string(), TheId::named("MenuBuild::Pause")));
@@ -2926,6 +3892,15 @@ impl TheTrait for Editor {
         main_menu.add_context_menu(file_menu);
         main_menu.add_context_menu(edit_menu);
         main_menu.add_context_menu(view_menu);
+        main_menu.add_context_menu(select_menu);
+        main_menu.add_context_menu(actor_menu);
+        main_menu.add_context_menu(blueprint_menu);
+        main_menu.add_context_menu(cinematics_menu);
+        main_menu.add_context_menu(modes_menu);
+        main_menu.add_context_menu(platforms_menu);
+        main_menu.add_context_menu(layouts_menu);
+        main_menu.add_context_menu(debug_menu);
+        main_menu.add_context_menu(source_control_menu);
         main_menu.add_context_menu(tools_menu);
         main_menu.add_context_menu(build_menu);
         main_menu.add_context_menu(settings_menu);
@@ -2939,28 +3914,33 @@ impl TheTrait for Editor {
         let mut top_quick_canvas = TheCanvas::new();
         top_quick_canvas.set_widget(TheToolListBar::new(TheId::named("Top Quick Tool Bar")));
         let mut top_quick_layout = TheHLayout::new(TheId::named("Top Quick Tool Layout"));
+        let compact_top = self.is_compact_ui(ctx);
         top_quick_layout.set_background_color(None);
-        top_quick_layout.set_margin(Vec4::new(10, 2, 10, 2));
-        top_quick_layout.set_padding(1);
+        if compact_top {
+            top_quick_layout.set_margin(Vec4::new(6, 1, 6, 1));
+            top_quick_layout.set_padding(0);
+        } else {
+            top_quick_layout.set_margin(Vec4::new(10, 2, 10, 2));
+            top_quick_layout.set_padding(1);
+        }
         if let Ok(toollist) = TOOLLIST.read() {
             for tool in &toollist.game_tools {
                 let quick_id = format!("TopTool::{}", tool.id().name);
-                let mut button = TheMenubarButton::new(TheId::named(&quick_id));
+                let mut button = TheTraybarButton::new(TheId::named(&quick_id));
                 button.set_icon_name(tool.icon_name());
-                button.set_has_state(true);
-                button.set_status_text(&format!("Activate {}", tool.info()));
-                top_quick_layout.add_widget(Box::new(button));
-
                 let tool_name = tool
                     .id()
                     .name
                     .strip_suffix(" Tool")
                     .unwrap_or(&tool.id().name)
                     .to_string();
-                let mut name_text =
-                    TheText::new(TheId::named(&format!("TopToolLabel::{}", tool.id().name)));
-                name_text.set_text(tool_name);
-                top_quick_layout.add_widget(Box::new(name_text));
+                if compact_top {
+                    button.set_text(String::new());
+                } else {
+                    button.set_text(tool_name);
+                }
+                button.set_status_text(&format!("Activate {}", tool.info()));
+                top_quick_layout.add_widget(Box::new(button));
             }
         }
         top_quick_canvas.set_layout(top_quick_layout);
@@ -3735,6 +4715,365 @@ impl TheTrait for Editor {
                     } else if item_id.name == "MenuMmoSim::Loot" {
                         let msg = self.run_mmorpg_sim_loot();
                         ctx.ui.send(TheEvent::SetStatusText(TheId::empty(), msg));
+                    } else if item_id.name == "MenuMapForge::OpenEditor" {
+                        ctx.ui.send(TheEvent::Custom(
+                            TheId::named("Set Tool"),
+                            TheValue::Text("World Tool".to_string()),
+                        ));
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Map Forge editor opened (World Tool active).".to_string(),
+                        ));
+                        redraw = true;
+                    } else if item_id.name == "MenuMapForge::ToolSelect" {
+                        ctx.ui.send(TheEvent::Custom(
+                            TheId::named("Set Tool"),
+                            TheValue::Text("Select Tool".to_string()),
+                        ));
+                        redraw = true;
+                    } else if item_id.name == "MenuMapForge::ToolTerrain" {
+                        ctx.ui.send(TheEvent::Custom(
+                            TheId::named("Set Tool"),
+                            TheValue::Text("World Tool".to_string()),
+                        ));
+                        redraw = true;
+                    } else if item_id.name == "MenuMapForge::ToolRoad" {
+                        ctx.ui.send(TheEvent::Custom(
+                            TheId::named("Set Tool"),
+                            TheValue::Text("Linedef Tool".to_string()),
+                        ));
+                        redraw = true;
+                    } else if item_id.name == "MenuMapForge::ToolDistrict" {
+                        ctx.ui.send(TheEvent::Custom(
+                            TheId::named("Set Tool"),
+                            TheValue::Text("Sector Tool".to_string()),
+                        ));
+                        redraw = true;
+                    } else if item_id.name == "MenuMapForge::ToolLandmark" {
+                        ctx.ui.send(TheEvent::Custom(
+                            TheId::named("Set Tool"),
+                            TheValue::Text("Entity Tool".to_string()),
+                        ));
+                        redraw = true;
+                    } else if item_id.name == "MenuMapForge::LayerDistricts" {
+                        self.overlay_show_town_districts = !self.overlay_show_town_districts;
+                        self.apply_town_overlay_visibility();
+                        ui.set_widget_value(
+                            "OverlayTownDistrictsCB",
+                            ctx,
+                            TheValue::Bool(self.overlay_show_town_districts),
+                        );
+                        workspace_prefs_dirty = true;
+                    } else if item_id.name == "MenuMapForge::LayerRoads" {
+                        self.overlay_show_town_roads = !self.overlay_show_town_roads;
+                        self.apply_town_overlay_visibility();
+                        ui.set_widget_value(
+                            "OverlayTownRoadsCB",
+                            ctx,
+                            TheValue::Bool(self.overlay_show_town_roads),
+                        );
+                        workspace_prefs_dirty = true;
+                    } else if item_id.name == "MenuMapForge::LayerLandmarks" {
+                        self.overlay_show_town_landmarks = !self.overlay_show_town_landmarks;
+                        self.apply_town_overlay_visibility();
+                        ui.set_widget_value(
+                            "OverlayTownLandmarksCB",
+                            ctx,
+                            TheValue::Bool(self.overlay_show_town_landmarks),
+                        );
+                        workspace_prefs_dirty = true;
+                    } else if item_id.name == "MenuMapForge::GenerateTown" {
+                        self.generate_town_system_data(ui, ctx);
+                        redraw = true;
+                    } else if item_id.name == "MenuMapForge::GenerateFantasyWorld" {
+                        self.generate_fantasy_world_system_data(ui, ctx);
+                        redraw = true;
+                    } else if item_id.name == "MenuMapForge::ReseedTown" {
+                        let seed = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs())
+                            .unwrap_or(1);
+                        self.generate_town_system_data_with_seed(ui, ctx, seed);
+                        redraw = true;
+                    } else if item_id.name == "MenuMapForge::RegenerateTown" {
+                        let seed = if self.towngen_last_seed == 0 {
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map(|d| d.as_secs())
+                                .unwrap_or(1)
+                        } else {
+                            self.towngen_last_seed
+                        };
+                        self.generate_town_system_data_with_seed(ui, ctx, seed);
+                        redraw = true;
+                    } else if item_id.name == "MenuMapForge::ExportJson" {
+                        ctx.ui.save_file_requester(
+                            TheId::named_with_id("ExportTownJson", Uuid::new_v4()),
+                            "Export Town Data".into(),
+                            TheFileExtension::new("JSON".into(), vec!["json".to_string()]),
+                        );
+                    } else if item_id.name == "MenuMapForge::ImportJson" {
+                        ctx.ui.open_file_requester(
+                            TheId::named_with_id("ImportTownJson", Uuid::new_v4()),
+                            "Import Town Data".into(),
+                            TheFileExtension::new("JSON".into(), vec!["json".to_string()]),
+                        );
+                    } else if item_id.name == "MenuMapForge::BakeMap" {
+                        self.bake_generated_town_to_current_map(ui, ctx);
+                        redraw = true;
+                    } else if item_id.name == "MenuSelect::All" {
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Select All requested.".to_string(),
+                        ));
+                    } else if item_id.name == "MenuSelect::None" {
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Selection cleared.".to_string(),
+                        ));
+                    } else if item_id.name == "MenuSelect::Invert" {
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Invert selection requested.".to_string(),
+                        ));
+                    } else if item_id.name == "MenuSelect::FilterGeometry" {
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Selection filter: geometry.".to_string(),
+                        ));
+                    } else if item_id.name == "MenuSelect::FilterEntity" {
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Selection filter: entities.".to_string(),
+                        ));
+                    } else if item_id.name == "MenuSelect::FilterLandmark" {
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Selection filter: landmarks.".to_string(),
+                        ));
+                    } else if item_id.name == "MenuActor::PlaceEntity" {
+                        ctx.ui.send(TheEvent::Custom(
+                            TheId::named("Set Tool"),
+                            TheValue::Text("Entity Tool".to_string()),
+                        ));
+                        redraw = true;
+                    } else if item_id.name == "MenuActor::PlaceLandmark" {
+                        ctx.ui.send(TheEvent::Custom(
+                            TheId::named("Set Tool"),
+                            TheValue::Text("Entity Tool".to_string()),
+                        ));
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Landmark placement mode (Entity Tool) active.".to_string(),
+                        ));
+                        redraw = true;
+                    } else if item_id.name == "MenuActor::PlaceTerrain" {
+                        ctx.ui.send(TheEvent::Custom(
+                            TheId::named("Set Tool"),
+                            TheValue::Text("World Tool".to_string()),
+                        ));
+                        redraw = true;
+                    } else if item_id.name == "MenuActor::AlignToGrid" {
+                        self.option_snap_to_grid = true;
+                        self.server_ctx.snap_to_grid = true;
+                        ui.set_widget_value("OptionSnapCB", ctx, TheValue::Bool(true));
+                        workspace_prefs_dirty = true;
+                    } else if item_id.name == "MenuActor::SnapToGrid" {
+                        self.option_snap_to_grid = !self.option_snap_to_grid;
+                        self.server_ctx.snap_to_grid = self.option_snap_to_grid;
+                        ui.set_widget_value(
+                            "OptionSnapCB",
+                            ctx,
+                            TheValue::Bool(self.option_snap_to_grid),
+                        );
+                        workspace_prefs_dirty = true;
+                    } else if item_id.name == "MenuActor::FocusSelection" {
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Focus selection requested.".to_string(),
+                        ));
+                    } else if item_id.name == "MenuBlueprint::OpenPanel" {
+                        self.show_ide_panel_dialog(
+                            ui,
+                            ctx,
+                            crate::ide_panels::IdePanelKind::Blueprint,
+                        );
+                    } else if item_id.name == "MenuBlueprint::CreateCharacter" {
+                        ctx.ui.save_file_requester(
+                            TheId::named_with_id("CreateCharacterBlueprint", Uuid::new_v4()),
+                            "Create Character Blueprint".into(),
+                            TheFileExtension::new("JSON".into(), vec!["json".to_string()]),
+                        );
+                    } else if item_id.name == "MenuBlueprint::CreateItem" {
+                        ctx.ui.save_file_requester(
+                            TheId::named_with_id("CreateItemBlueprint", Uuid::new_v4()),
+                            "Create Item Blueprint".into(),
+                            TheFileExtension::new("JSON".into(), vec!["json".to_string()]),
+                        );
+                    } else if item_id.name == "MenuBlueprint::CreateQuest" {
+                        ctx.ui.save_file_requester(
+                            TheId::named_with_id("CreateQuestBlueprint", Uuid::new_v4()),
+                            "Create Quest Blueprint".into(),
+                            TheFileExtension::new("JSON".into(), vec!["json".to_string()]),
+                        );
+                    } else if item_id.name == "MenuBlueprint::CompileAll" {
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Blueprint compile-all requested.".to_string(),
+                        ));
+                    } else if item_id.name == "MenuBlueprint::Validate" {
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Blueprint validation requested.".to_string(),
+                        ));
+                    } else if item_id.name == "MenuCinematics::CreateSequence" {
+                        ctx.ui.save_file_requester(
+                            TheId::named_with_id("CreateLevelSequence", Uuid::new_v4()),
+                            "Create Level Sequence".into(),
+                            TheFileExtension::new("JSON".into(), vec!["json".to_string()]),
+                        );
+                    } else if item_id.name == "MenuCinematics::AddCameraTrack" {
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Camera track add requested.".to_string(),
+                        ));
+                    } else if item_id.name == "MenuCinematics::PlaySequence" {
+                        ctx.ui.send(TheEvent::StateChanged(
+                            TheId::named("Play"),
+                            TheWidgetState::Clicked,
+                        ));
+                        redraw = true;
+                    } else if item_id.name == "MenuMode::Select" {
+                        ctx.ui.send(TheEvent::Custom(
+                            TheId::named("Set Tool"),
+                            TheValue::Text("Select Tool".to_string()),
+                        ));
+                        redraw = true;
+                    } else if item_id.name == "MenuMode::Landscape" {
+                        ctx.ui.send(TheEvent::Custom(
+                            TheId::named("Set Tool"),
+                            TheValue::Text("World Tool".to_string()),
+                        ));
+                        redraw = true;
+                    } else if item_id.name == "MenuMode::Modeling" {
+                        ctx.ui.send(TheEvent::Custom(
+                            TheId::named("Set Tool"),
+                            TheValue::Text("Rect Tool".to_string()),
+                        ));
+                        redraw = true;
+                    } else if item_id.name == "MenuMode::Foliage" {
+                        ctx.ui.send(TheEvent::Custom(
+                            TheId::named("Set Tool"),
+                            TheValue::Text("Entity Tool".to_string()),
+                        ));
+                        redraw = true;
+                    } else if item_id.name == "MenuMode::BrushEditing" {
+                        ctx.ui.send(TheEvent::Custom(
+                            TheId::named("Set Tool"),
+                            TheValue::Text("Sector Tool".to_string()),
+                        ));
+                        redraw = true;
+                    } else if item_id.name == "MenuMode::Animation" {
+                        ctx.ui.send(TheEvent::Custom(
+                            TheId::named("Set Tool"),
+                            TheValue::Text("Code Tool".to_string()),
+                        ));
+                        redraw = true;
+                    } else if item_id.name == "MenuMode::GameView" {
+                        ctx.ui.send(TheEvent::StateChanged(
+                            TheId::named("GameInput"),
+                            TheWidgetState::Clicked,
+                        ));
+                        redraw = true;
+                    } else if item_id.name == "MenuPlatforms::PackageWindows" {
+                        ctx.ui.save_file_requester(
+                            TheId::named_with_id("PackageWindows", Uuid::new_v4()),
+                            "Package for Windows".into(),
+                            TheFileExtension::new("JSON".into(), vec!["json".to_string()]),
+                        );
+                    } else if item_id.name == "MenuPlatforms::PackageLinux" {
+                        ctx.ui.save_file_requester(
+                            TheId::named_with_id("PackageLinux", Uuid::new_v4()),
+                            "Package for Linux".into(),
+                            TheFileExtension::new("JSON".into(), vec!["json".to_string()]),
+                        );
+                    } else if item_id.name == "MenuPlatforms::PackageMac" {
+                        ctx.ui.save_file_requester(
+                            TheId::named_with_id("PackageMac", Uuid::new_v4()),
+                            "Package for macOS".into(),
+                            TheFileExtension::new("JSON".into(), vec!["json".to_string()]),
+                        );
+                    } else if item_id.name == "MenuPlatforms::PackageWeb" {
+                        ctx.ui.save_file_requester(
+                            TheId::named_with_id("PackageWeb", Uuid::new_v4()),
+                            "Package for Web".into(),
+                            TheFileExtension::new("JSON".into(), vec!["json".to_string()]),
+                        );
+                    } else if item_id.name == "MenuPlatforms::ProjectSettings" {
+                        self.show_ide_feature_matrix_dialog(ui, ctx);
+                    } else if item_id.name == "MenuPlatforms::DeviceManager" {
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Device manager opened (stub).".to_string(),
+                        ));
+                    } else if item_id.name == "MenuPlatforms::SdkManager" {
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "SDK manager opened (stub).".to_string(),
+                        ));
+                    } else if item_id.name == "MenuLayouts::Unreal" {
+                        self.apply_ide_layout_unreal(ui, ctx);
+                        workspace_prefs_dirty = true;
+                    } else if item_id.name == "MenuLayouts::Minimal" {
+                        self.apply_ide_layout_minimal(ui, ctx);
+                        workspace_prefs_dirty = true;
+                    } else if item_id.name == "MenuLayouts::FeatureMatrix" {
+                        self.show_ide_feature_matrix_dialog(ui, ctx);
+                    } else if item_id.name == "MenuDebug::ToggleRuntime" {
+                        if self.is_realtime_mode() {
+                            ctx.ui.send(TheEvent::StateChanged(
+                                TheId::named("Stop"),
+                                TheWidgetState::Clicked,
+                            ));
+                        } else {
+                            ctx.ui.send(TheEvent::StateChanged(
+                                TheId::named("Play"),
+                                TheWidgetState::Clicked,
+                            ));
+                        }
+                        redraw = true;
+                    } else if item_id.name == "MenuDebug::SimTick" {
+                        let msg = self.run_mmorpg_sim_tick();
+                        ctx.ui.send(TheEvent::SetStatusText(TheId::empty(), msg));
+                    } else if item_id.name == "MenuDebug::SimCombat" {
+                        let msg = self.run_mmorpg_sim_combat();
+                        ctx.ui.send(TheEvent::SetStatusText(TheId::empty(), msg));
+                    } else if item_id.name == "MenuDebug::SimLoot" {
+                        let msg = self.run_mmorpg_sim_loot();
+                        ctx.ui.send(TheEvent::SetStatusText(TheId::empty(), msg));
+                    } else if item_id.name == "MenuDebug::FeatureMatrix" {
+                        self.show_ide_feature_matrix_dialog(ui, ctx);
+                    } else if item_id.name == "MenuSource::Connect" {
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Source control connect requested (stub).".to_string(),
+                        ));
+                    } else if item_id.name == "MenuSource::SubmitContent" {
+                        ctx.ui.save_file_requester(
+                            TheId::named_with_id("SourceSubmitContent", Uuid::new_v4()),
+                            "Source Control Submit".into(),
+                            TheFileExtension::new("TXT".into(), vec!["txt".to_string()]),
+                        );
+                    } else if item_id.name == "MenuSource::Sync" {
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Source control sync requested (stub).".to_string(),
+                        ));
+                    } else if item_id.name == "MenuSource::RevertUnchanged" {
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            "Source control revert unchanged requested (stub).".to_string(),
+                        ));
                     } else if item_id.name == "MenuView::ToggleLeft" {
                         self.show_left_toolbar = !self.show_left_toolbar;
                         self.apply_toolbar_visibility(ui, ctx);
@@ -4863,6 +6202,72 @@ impl TheTrait for Editor {
                             ctx.ui.send(TheEvent::StateChanged(
                                 TheId::named("Help"),
                                 TheWidgetState::Clicked,
+                            ));
+                            redraw = true;
+                        } else if id.name == "TopQuickLayouts" {
+                            ctx.ui.send(TheEvent::ContextMenuSelected(
+                                TheId::named("TopQuickLayouts"),
+                                TheId::named("MenuLayouts::Unreal"),
+                            ));
+                            redraw = true;
+                        } else if id.name == "TopQuickDebugToggle" {
+                            ctx.ui.send(TheEvent::ContextMenuSelected(
+                                TheId::named("TopQuickDebugToggle"),
+                                TheId::named("MenuDebug::ToggleRuntime"),
+                            ));
+                            redraw = true;
+                        } else if id.name == "TopQuickDebugTick" {
+                            ctx.ui.send(TheEvent::ContextMenuSelected(
+                                TheId::named("TopQuickDebugTick"),
+                                TheId::named("MenuDebug::SimTick"),
+                            ));
+                            redraw = true;
+                        } else if id.name == "TopQuickSourceSubmit" {
+                            ctx.ui.send(TheEvent::ContextMenuSelected(
+                                TheId::named("TopQuickSourceSubmit"),
+                                TheId::named("MenuSource::SubmitContent"),
+                            ));
+                            redraw = true;
+                        } else if id.name == "TopQuickSourceSync" {
+                            ctx.ui.send(TheEvent::ContextMenuSelected(
+                                TheId::named("TopQuickSourceSync"),
+                                TheId::named("MenuSource::Sync"),
+                            ));
+                            redraw = true;
+                        } else if id.name == "TopQuickModeSelect" {
+                            ctx.ui.send(TheEvent::ContextMenuSelected(
+                                TheId::named("TopQuickModeSelect"),
+                                TheId::named("MenuMode::Select"),
+                            ));
+                            redraw = true;
+                        } else if id.name == "TopQuickModeLandscape" {
+                            ctx.ui.send(TheEvent::ContextMenuSelected(
+                                TheId::named("TopQuickModeLandscape"),
+                                TheId::named("MenuMode::Landscape"),
+                            ));
+                            redraw = true;
+                        } else if id.name == "TopQuickPlatformWindows" {
+                            ctx.ui.send(TheEvent::ContextMenuSelected(
+                                TheId::named("TopQuickPlatformWindows"),
+                                TheId::named("MenuPlatforms::PackageWindows"),
+                            ));
+                            redraw = true;
+                        } else if id.name == "TopQuickPlatformWeb" {
+                            ctx.ui.send(TheEvent::ContextMenuSelected(
+                                TheId::named("TopQuickPlatformWeb"),
+                                TheId::named("MenuPlatforms::PackageWeb"),
+                            ));
+                            redraw = true;
+                        } else if id.name == "TopQuickMapForgeOpen" {
+                            ctx.ui.send(TheEvent::ContextMenuSelected(
+                                TheId::named("TopQuickMapForgeOpen"),
+                                TheId::named("MenuMapForge::OpenEditor"),
+                            ));
+                            redraw = true;
+                        } else if id.name == "TopQuickMapForgeGenerateTown" {
+                            ctx.ui.send(TheEvent::ContextMenuSelected(
+                                TheId::named("TopQuickMapForgeGenerateTown"),
+                                TheId::named("MenuMapForge::GenerateTown"),
                             ));
                             redraw = true;
                         } else if id.name == "QuickWindowContentBrowser" {

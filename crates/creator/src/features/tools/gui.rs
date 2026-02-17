@@ -1,5 +1,161 @@
+use crate::features::menus::{MenuItem, build_feature_menu};
+#[derive(Clone, Debug)]
+pub enum ItemType {
+    Weapon,
+    Armor,
+    Accessory,
+    Consumable,
+    KeyItem,
+    Material,
+    Misc,
+    Other(String),
+}
+
+#[derive(Clone, Debug)]
+pub enum WeaponType {
+    Sword,
+    Axe,
+    Spear,
+    Bow,
+    Dagger,
+    Staff,
+    Wand,
+    Fist,
+    Gun,
+    Whip,
+    Katana,
+    Hammer,
+    Flail,
+    Mace,
+    Other(String),
+}
+
+#[derive(Clone, Debug)]
+pub enum ArmorType {
+    Helmet,
+    Chest,
+    Gloves,
+    Boots,
+    Shield,
+    Cloak,
+    Accessory,
+    Other(String),
+}
+
+#[derive(Clone)]
+pub struct ItemEntry {
+    pub name: String,
+    pub item_type: ItemType,
+    pub subtype: String,
+    pub description: String,
+    pub stats: Vec<(String, i32)>,
+    pub rarity: String,
+    pub value: i32,
+    pub usable_in_battle: bool,
+    pub usable_in_field: bool,
+}
+
+#[derive(Clone)]
+pub struct WeaponEntry {
+    pub name: String,
+    pub weapon_type: WeaponType,
+    pub description: String,
+    pub stats: Vec<(String, i32)>,
+    pub rarity: String,
+    pub value: i32,
+    pub usable_by: Vec<String>, // Classes/races
+}
+
+#[derive(Clone)]
+pub struct ArmorEntry {
+    pub name: String,
+    pub armor_type: ArmorType,
+    pub description: String,
+    pub stats: Vec<(String, i32)>,
+    pub rarity: String,
+    pub value: i32,
+    pub usable_by: Vec<String>,
+}
+
+#[derive(Clone)]
+pub struct LootTableEntry {
+    pub item: String,
+    pub chance: f32,
+    pub min_qty: u32,
+    pub max_qty: u32,
+}
+#[derive(Clone, Debug)]
+pub enum Race {
+    Human,
+    Elf,
+    Dwarf,
+    Orc,
+    Goblin,
+    Dragonkin,
+    Undead,
+    Beast,
+    Demon,
+    Angel,
+    Construct,
+    Other(String),
+}
+
+#[derive(Clone, Debug)]
+pub enum CharacterClass {
+    Warrior,
+    Mage,
+    Thief,
+    Cleric,
+    Ranger,
+    Paladin,
+    Monk,
+    Bard,
+    Necromancer,
+    Summoner,
+    Berserker,
+    Knight,
+    Samurai,
+    Ninja,
+    Alchemist,
+    Other(String),
+}
+
+#[derive(Clone, Debug)]
+pub enum NpcType {
+    Friendly,
+    Enemy,
+    Merchant,
+    QuestGiver,
+    Boss,
+    Miniboss,
+    Elite,
+    Common,
+    Other(String),
+}
+
+#[derive(Clone, Debug)]
+pub enum Subtype {
+    Fire,
+    Ice,
+    Lightning,
+    Poison,
+    Holy,
+    Dark,
+    Mechanical,
+    Undead,
+    Beast,
+    Other(String),
+}
+
+// Example: List of available races, classes, types, subtypes for dropdowns or selection
+pub const RACES: &[&str] = &["Human", "Elf", "Dwarf", "Orc", "Goblin", "Dragonkin", "Undead", "Beast", "Demon", "Angel", "Construct"];
+pub const CLASSES: &[&str] = &["Warrior", "Mage", "Thief", "Cleric", "Ranger", "Paladin", "Monk", "Bard", "Necromancer", "Summoner", "Berserker", "Knight", "Samurai", "Ninja", "Alchemist"];
+pub const NPC_TYPES: &[&str] = &["Friendly", "Enemy", "Merchant", "QuestGiver", "Boss", "Miniboss", "Elite", "Common"];
+pub const SUBTYPES: &[&str] = &["Fire", "Ice", "Lightning", "Poison", "Holy", "Dark", "Mechanical", "Undead", "Beast"];
 mod pixel_assets;
 use pixel_assets::*;
+mod items_menu;
+use items_menu::ItemsMenuState;
 //! GUI tools for MMORPG features and extensible toolbars.
 //
 // This module provides the main GUI struct and logic for all feature tools, toolbars, and editors.
@@ -15,6 +171,7 @@ use pixel_assets::*;
 /// Simple entry for city, town, kingdom, etc. editors.
 
 use egui::*;
+use crate::features::tools::map_forge::MapForgeState;
 
 mod blueprint_editor;
 use blueprint_editor::BlueprintEditorGui;
@@ -42,6 +199,7 @@ pub struct FeatureToolGui {
     show_group_finder: bool,
     show_world_boss: bool,
     show_event: bool,
+    show_world_map: bool,
     show_story: bool,
     show_quest: bool,
     show_side_quest: bool,
@@ -58,6 +216,18 @@ pub struct FeatureToolGui {
     show_race: bool,
     show_class: bool,
     show_profession: bool,
+    map_forge: MapForgeState,
+    // New RPG/JRPG/MMORPG data collections
+    pub all_races: Vec<String>,
+    pub all_classes: Vec<String>,
+    pub all_types: Vec<String>,
+    pub all_subtypes: Vec<String>,
+    pub all_items: Vec<ItemEntry>,
+    pub all_weapons: Vec<WeaponEntry>,
+    pub all_armors: Vec<ArmorEntry>,
+    pub all_loot_tables: Vec<LootTableEntry>,
+    pub all_npcs: Vec<NpcEntry>,
+    pub all_enemies: Vec<EnemyEntry>,
     // Loot editor state
     loot_table: Vec<LootEntry>,
     loot_name: String,
@@ -124,6 +294,11 @@ pub struct FeatureToolGui {
     profession_list: Vec<SimpleEntry>,
     profession_name: String,
     profession_edit_idx: Option<usize>,
+    // Items menu state
+    item_name: String,
+    item_desc: String,
+    item_value: i32,
+    item_edit_idx: Option<usize>,
 }
 
 #[derive(Clone)]
@@ -142,6 +317,254 @@ struct SkillEntry {
 struct EnemyEntry {
     name: String,
     kind: String, // e.g. Boss, Mob, Elite, etc.
+    race: String,
+    enemy_type: String,
+    subtype: String,
+    class: String,
+    subclass: String,
+    dna: Option<NpcDna>,
+    equipment: Vec<EquipmentEntry>,
+    loot_table: Vec<LootEntry>,
+}
+
+#[derive(Clone)]
+struct NpcEntry {
+    name: String,
+    race: String,
+    npc_type: String,
+    subtype: String,
+    class: String,
+    subclass: String,
+    dna: Option<NpcDna>,
+    equipment: Vec<EquipmentEntry>,
+    loot_table: Vec<LootEntry>,
+}
+
+#[derive(Clone)]
+struct NpcDna {
+    strength: u8,
+    agility: u8,
+    intelligence: u8,
+    vitality: u8,
+    luck: u8,
+    traits: Vec<String>,
+}
+
+#[derive(Clone)]
+struct EquipmentEntry {
+    name: String,
+    kind: String, // Weapon, Armor, Accessory, etc.
+    slot: String, // MainHand, OffHand, Head, Body, etc.
+    stats: Vec<(String, i32)>,
+    rarity: String,
+}
+
+#[derive(Clone)]
+struct StoryEntry {
+    title: String,
+}
+
+#[derive(Clone)]
+struct QuestEntry {
+    title: String,
+}
+
+#[derive(Clone)]
+struct ActEntry {
+    title: String,
+}
+
+#[derive(Clone)]
+struct ChapterEntry {
+    title: String,
+}
+
+#[derive(Clone)]
+struct RewardEntry {
+    desc: String,
+}
+
+#[derive(Clone)]
+struct SimpleEntry {
+    name: String,
+}
+
+pub struct FeatureToolGui {
+    /// Blueprint visual scripting editor
+    show_blueprint_editor: bool,
+    blueprint_editor: BlueprintEditorGui,
+    /// Feature tool dialog states
+    show_loot: bool,
+    show_skill_tree: bool,
+    show_enemy_boss: bool,
+    show_spell: bool,
+    show_level: bool,
+    show_equipment: bool,
+    show_inventory: bool,
+    show_stat: bool,
+    show_item_tier: bool,
+    show_biome: bool,
+    show_encounter: bool,
+    show_group_finder: bool,
+    show_world_boss: bool,
+    show_event: bool,
+    show_story: bool,
+    show_quest: bool,
+    show_side_quest: bool,
+    show_act: bool,
+    show_chapter: bool,
+    show_rewards: bool,
+    show_city: bool,
+    show_town: bool,
+    show_kingdom: bool,
+    show_underground: bool,
+    show_zone: bool,
+    show_world: bool,
+    show_realm: bool,
+    show_race: bool,
+    show_class: bool,
+    show_profession: bool,
+    map_forge: MapForgeState,
+    // New RPG/JRPG/MMORPG data collections
+    pub all_races: Vec<String>,
+    pub all_classes: Vec<String>,
+    pub all_types: Vec<String>,
+    pub all_subtypes: Vec<String>,
+    pub all_items: Vec<ItemEntry>,
+    pub all_weapons: Vec<WeaponEntry>,
+    pub all_armors: Vec<ArmorEntry>,
+    pub all_loot_tables: Vec<LootTableEntry>,
+    pub all_npcs: Vec<NpcEntry>,
+    pub all_enemies: Vec<EnemyEntry>,
+    // Loot editor state
+    loot_table: Vec<LootEntry>,
+    loot_name: String,
+    loot_chance: f32,
+    loot_edit_idx: Option<usize>,
+    // Skill tree editor state
+    skill_tree: Vec<SkillEntry>,
+    skill_name: String,
+    skill_desc: String,
+    skill_edit_idx: Option<usize>,
+    // Enemy/Boss editor state
+    enemy_list: Vec<EnemyEntry>,
+    enemy_name: String,
+    enemy_type: String,
+    enemy_edit_idx: Option<usize>,
+    // Story/Quest/Act/Reward editors
+    story_list: Vec<StoryEntry>,
+    story_title: String,
+    story_edit_idx: Option<usize>,
+    quest_list: Vec<QuestEntry>,
+    quest_title: String,
+    quest_edit_idx: Option<usize>,
+    side_quest_list: Vec<QuestEntry>,
+    side_quest_title: String,
+    side_quest_edit_idx: Option<usize>,
+    act_list: Vec<ActEntry>,
+    act_title: String,
+    act_edit_idx: Option<usize>,
+    chapter_list: Vec<ChapterEntry>,
+    chapter_title: String,
+    chapter_edit_idx: Option<usize>,
+    reward_list: Vec<RewardEntry>,
+    reward_desc: String,
+    reward_edit_idx: Option<usize>,
+    // City/World/Zone editors
+    city_list: Vec<SimpleEntry>,
+    city_name: String,
+    city_edit_idx: Option<usize>,
+    town_list: Vec<SimpleEntry>,
+    town_name: String,
+    town_edit_idx: Option<usize>,
+    kingdom_list: Vec<SimpleEntry>,
+    kingdom_name: String,
+    kingdom_edit_idx: Option<usize>,
+    underground_list: Vec<SimpleEntry>,
+    underground_name: String,
+    underground_edit_idx: Option<usize>,
+    zone_list: Vec<SimpleEntry>,
+    zone_name: String,
+    zone_edit_idx: Option<usize>,
+    world_list: Vec<SimpleEntry>,
+    world_name: String,
+    world_edit_idx: Option<usize>,
+    realm_list: Vec<SimpleEntry>,
+    realm_name: String,
+    realm_edit_idx: Option<usize>,
+    // DnD 5e Races, Classes, Professions
+    race_list: Vec<SimpleEntry>,
+    race_name: String,
+    race_edit_idx: Option<usize>,
+    class_list: Vec<SimpleEntry>,
+    class_name: String,
+    class_edit_idx: Option<usize>,
+    profession_list: Vec<SimpleEntry>,
+    profession_name: String,
+    profession_edit_idx: Option<usize>,
+    // Items menu state
+    item_name: String,
+    item_desc: String,
+    item_value: i32,
+    item_edit_idx: Option<usize>,
+}
+
+#[derive(Clone)]
+struct LootEntry {
+    name: String,
+    chance: f32,
+}
+
+#[derive(Clone)]
+struct SkillEntry {
+    name: String,
+    desc: String,
+}
+
+#[derive(Clone)]
+struct EnemyEntry {
+    name: String,
+    kind: String, // e.g. Boss, Mob, Elite, etc.
+    race: String,
+    enemy_type: String,
+    subtype: String,
+    class: String,
+    subclass: String,
+    dna: Option<NpcDna>,
+    equipment: Vec<EquipmentEntry>,
+    loot_table: Vec<LootEntry>,
+}
+
+#[derive(Clone)]
+struct NpcEntry {
+    name: String,
+    race: String,
+    npc_type: String,
+    subtype: String,
+    class: String,
+    subclass: String,
+    dna: Option<NpcDna>,
+    equipment: Vec<EquipmentEntry>,
+    loot_table: Vec<LootEntry>,
+}
+
+#[derive(Clone)]
+struct NpcDna {
+    strength: u8,
+    agility: u8,
+    intelligence: u8,
+    vitality: u8,
+    luck: u8,
+    traits: Vec<String>,
+}
+
+#[derive(Clone)]
+struct EquipmentEntry {
+    name: String,
+    kind: String, // Weapon, Armor, Accessory, etc.
+    slot: String, // MainHand, OffHand, Head, Body, etc.
+    stats: Vec<(String, i32)>,
+    rarity: String,
 }
 
 #[derive(Clone)]
@@ -175,6 +598,67 @@ struct SimpleEntry {
 }
 
 impl FeatureToolGui {
+        /// Recursively render a menu and handle submenu clicks.
+        fn render_menu_recursive(&mut self, ui: &mut egui::Ui, menu: &MenuItem) {
+            if menu.submenus.is_empty() {
+                if ui.button(&menu.name).clicked() {
+                    self.handle_menu_action(&menu.name);
+                }
+            } else {
+                ui.menu_button(&menu.name, |ui| {
+                    for submenu in &menu.submenus {
+                        self.render_menu_recursive(ui, submenu);
+                    }
+                });
+            }
+        }
+
+        /// Handle menu/submenu actions by name.
+        fn handle_menu_action(&mut self, name: &str) {
+            match name {
+                // --- RPG Features ---
+                "Quests" | "Main Quests" | "Side Quests" | "Quest Chains" | "Quest Rewards" => self.show_quest = true,
+                "Inventory" | "Items" | "Equipment" | "Key Items" | "Consumables" => self.show_inventory = true,
+                "Character Progression" | "Leveling" | "Skill Trees" | "Classes" | "Subclasses" | "Stats & Attributes" => self.show_level = true,
+                "Turn-based Combat" | "Battle System" | "Enemy Groups" | "Boss Battles" | "Status Effects" => self.show_enemy_boss = true,
+                "Loot Tables" => self.show_loot = true,
+
+                // --- MMORPG Features ---
+                "Guilds" | "Guild Creation" | "Guild Management" | "Guild Quests" | "Guild Wars" => self.show_group_finder = true,
+                "Trading" | "Player Trading" | "Auction House" | "Marketplaces" => self.show_event = true,
+                "PvP Arenas" | "1v1 Duels" | "Team Battles" | "Ranked Matches" => self.show_encounter = true,
+                "World Events" | "Seasonal Events" | "Boss Raids" | "Server-wide Quests" => self.show_event = true,
+
+                // --- Game Logic ---
+                "Scripting" | "Visual Scripting" | "Lua Scripts" | "Event Triggers" => self.show_story = true,
+                "AI Behaviors" | "Enemy AI" | "NPC Schedules" | "Pathfinding" => self.show_stat = true,
+                "Dialogue Trees" | "Branching Dialogue" | "Voice Acting" | "Cinematic Events" => self.show_story = true,
+
+                // --- Map Forge Systems ---
+                "Map Editor"
+                | "Tile Editor"
+                | "Object Placer"
+                | "Event Editor"
+                | "Cutscene Editor"
+                | "Paint Tool"
+                | "Erase Tool"
+                | "Fill Tool"
+                | "Selection Tool"
+                | "Object Placement Tool"
+                | "Terrain Layer"
+                | "Collision Layer"
+                | "Object Layer"
+                | "Event Layer"
+                | "Toggle Grid"
+                | "Snap To Grid"
+                | "Resize Map"
+                | "Export Map" => {
+                    self.map_forge.open();
+                }
+
+                _ => {},
+            }
+        }
     pub fn new() -> Self {
         Self {
             show_blueprint_editor: false,
@@ -260,15 +744,49 @@ impl FeatureToolGui {
             show_race: false,
             show_class: false,
             show_profession: false,
-            race_list: Vec::new(),
+            map_forge: MapForgeState::default(),
+            race_list: vec![SimpleEntry { name: "Human".into() }, SimpleEntry { name: "Elf".into() }, SimpleEntry { name: "Dwarf".into() }, SimpleEntry { name: "Orc".into() }, SimpleEntry { name: "Goblin".into() }, SimpleEntry { name: "Dragonkin".into() }, SimpleEntry { name: "Undead".into() }, SimpleEntry { name: "Beast".into() }, SimpleEntry { name: "Demon".into() }, SimpleEntry { name: "Angel".into() }, SimpleEntry { name: "Construct".into() }],
             race_name: String::new(),
             race_edit_idx: None,
-            class_list: Vec::new(),
+            class_list: vec![SimpleEntry { name: "Warrior".into() }, SimpleEntry { name: "Mage".into() }, SimpleEntry { name: "Thief".into() }, SimpleEntry { name: "Cleric".into() }, SimpleEntry { name: "Ranger".into() }, SimpleEntry { name: "Paladin".into() }, SimpleEntry { name: "Monk".into() }, SimpleEntry { name: "Bard".into() }, SimpleEntry { name: "Necromancer".into() }, SimpleEntry { name: "Summoner".into() }, SimpleEntry { name: "Berserker".into() }, SimpleEntry { name: "Knight".into() }, SimpleEntry { name: "Samurai".into() }, SimpleEntry { name: "Ninja".into() }, SimpleEntry { name: "Alchemist".into() }],
             class_name: String::new(),
             class_edit_idx: None,
-            profession_list: Vec::new(),
+            profession_list: vec![SimpleEntry { name: "Blacksmith".into() }, SimpleEntry { name: "Merchant".into() }, SimpleEntry { name: "Healer".into() }, SimpleEntry { name: "Hunter".into() }, SimpleEntry { name: "Farmer".into() }, SimpleEntry { name: "Fisher".into() }, SimpleEntry { name: "Miner".into() }, SimpleEntry { name: "Scholar".into() }, SimpleEntry { name: "Guard".into() }],
             profession_name: String::new(),
             profession_edit_idx: None,
+            // New RPG/JRPG/MMORPG archetype data
+            all_races: vec!["Human".into(), "Elf".into(), "Dwarf".into(), "Orc".into(), "Goblin".into(), "Dragonkin".into(), "Undead".into(), "Beast".into(), "Demon".into(), "Angel".into(), "Construct".into()],
+            all_classes: vec!["Warrior".into(), "Mage".into(), "Thief".into(), "Cleric".into(), "Ranger".into(), "Paladin".into(), "Monk".into(), "Bard".into(), "Necromancer".into(), "Summoner".into(), "Berserker".into(), "Knight".into(), "Samurai".into(), "Ninja".into(), "Alchemist".into()],
+            all_types: vec!["Friendly".into(), "Enemy".into(), "Merchant".into(), "QuestGiver".into(), "Boss".into(), "Miniboss".into(), "Elite".into(), "Common".into()],
+            all_subtypes: vec!["Fire".into(), "Ice".into(), "Lightning".into(), "Poison".into(), "Holy".into(), "Dark".into(), "Mechanical".into(), "Undead".into(), "Beast".into()],
+            all_items: vec![
+                ItemEntry { name: "Potion".into(), item_type: ItemType::Consumable, subtype: "Healing".into(), description: "Restores HP".into(), stats: vec![("HP".into(), 50)], rarity: "Common".into(), value: 10, usable_in_battle: true, usable_in_field: true },
+                ItemEntry { name: "Hi-Potion".into(), item_type: ItemType::Consumable, subtype: "Healing".into(), description: "Restores more HP".into(), stats: vec![("HP".into(), 200)], rarity: "Uncommon".into(), value: 50, usable_in_battle: true, usable_in_field: true },
+                ItemEntry { name: "Antidote".into(), item_type: ItemType::Consumable, subtype: "Cure".into(), description: "Cures poison".into(), stats: vec![], rarity: "Common".into(), value: 8, usable_in_battle: true, usable_in_field: true },
+                ItemEntry { name: "Elixir".into(), item_type: ItemType::Consumable, subtype: "Restoration".into(), description: "Fully restores HP/MP".into(), stats: vec![("HP".into(), 9999), ("MP".into(), 9999)], rarity: "Rare".into(), value: 500, usable_in_battle: true, usable_in_field: true },
+            ],
+            all_weapons: vec![
+                WeaponEntry { name: "Iron Sword".into(), weapon_type: WeaponType::Sword, description: "A basic iron sword.".into(), stats: vec![("ATK".into(), 10)], rarity: "Common".into(), value: 30, usable_by: vec!["Warrior".into(), "Knight".into()] },
+                WeaponEntry { name: "Magic Staff".into(), weapon_type: WeaponType::Staff, description: "A staff for casting spells.".into(), stats: vec![("ATK".into(), 3), ("MAG".into(), 8)], rarity: "Uncommon".into(), value: 60, usable_by: vec!["Mage".into(), "Cleric".into()] },
+                WeaponEntry { name: "Dagger".into(), weapon_type: WeaponType::Dagger, description: "A small, quick blade.".into(), stats: vec![("ATK".into(), 6), ("AGI".into(), 2)], rarity: "Common".into(), value: 18, usable_by: vec!["Thief".into(), "Ninja".into()] },
+            ],
+            all_armors: vec![
+                ArmorEntry { name: "Leather Armor".into(), armor_type: ArmorType::Chest, description: "Basic leather armor.".into(), stats: vec![("DEF".into(), 5)], rarity: "Common".into(), value: 20, usable_by: vec!["Warrior".into(), "Thief".into()] },
+                ArmorEntry { name: "Iron Shield".into(), armor_type: ArmorType::Shield, description: "A sturdy iron shield.".into(), stats: vec![("DEF".into(), 8)], rarity: "Uncommon".into(), value: 35, usable_by: vec!["Warrior".into(), "Knight".into()] },
+                ArmorEntry { name: "Wizard Robe".into(), armor_type: ArmorType::Chest, description: "A robe for spellcasters.".into(), stats: vec![("DEF".into(), 2), ("MAG".into(), 5)], rarity: "Uncommon".into(), value: 40, usable_by: vec!["Mage".into(), "Cleric".into()] },
+            ],
+            all_loot_tables: vec![
+                LootTableEntry { item: "Potion".into(), chance: 0.5, min_qty: 1, max_qty: 2 },
+                LootTableEntry { item: "Iron Sword".into(), chance: 0.1, min_qty: 1, max_qty: 1 },
+                LootTableEntry { item: "Leather Armor".into(), chance: 0.08, min_qty: 1, max_qty: 1 },
+            ],
+            all_npcs: Vec::new(),
+            all_enemies: Vec::new(),
+            // Items menu state
+            item_name: String::new(),
+            item_desc: String::new(),
+            item_value: 0,
+            item_edit_idx: None,
         }
     }
 
@@ -280,23 +798,85 @@ impl FeatureToolGui {
     /// # Arguments
     /// * `ctx` - The egui context for rendering the UI.
     pub fn show(&mut self, ctx: &egui::Context) {
-        // Left vertical toolbar
+        // Left vertical toolbar with more tools and submenus
         egui::SidePanel::left("left_toolbar").show(ctx, |ui| {
             ui.vertical(|ui| {
-                if ui.button("Custom Tool").clicked() {
-                    // TODO: Custom tool logic here
-                    println!("Custom Tool (left toolbar) clicked");
+                ui.heading("Tools");
+                if ui.button("Show MapForge").clicked() {
+                    self.map_forge.toggle();
                 }
+                if ui.button("World Editor").clicked() {
+                    println!("World Editor opened");
+                }
+                if ui.button("Engine Settings").clicked() {
+                    println!("Engine Settings opened");
+                }
+                if ui.button("Debug Console").clicked() {
+                    println!("Debug Console opened");
+                }
+                ui.separator();
+                ui.collapsing("Quick Actions", |ui| {
+                    if ui.button("Save Game").clicked() {
+                        println!("Game saved");
+                    }
+                    if ui.button("Load Game").clicked() {
+                        println!("Game loaded");
+                    }
+                    if ui.button("Run Test").clicked() {
+                        println!("Test run");
+                    }
+                });
+            });
+        });
+
+        // MapForge Black Screen Panel (overlay)
+        if self.map_forge.visible {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                self.map_forge.show_toolbar(ui);
+                self.map_forge.show_canvas(ui);
+            });
+        }
+
+        // Right vertical panel for inspector, debug, and systems
+        egui::SidePanel::right("right_toolbar").show(ctx, |ui| {
+            ui.vertical(|ui| {
+                ui.heading("Inspector & Systems");
+                if ui.button("Inspector").clicked() {
+                    println!("Inspector opened");
+                }
+                if ui.button("Hierarchy").clicked() {
+                    println!("Hierarchy opened");
+                }
+                if ui.button("Profiler").clicked() {
+                    println!("Profiler opened");
+                }
+                if ui.button("Log Viewer").clicked() {
+                    println!("Log Viewer opened");
+                }
+                ui.separator();
+                ui.collapsing("Systems", |ui| {
+                    if ui.button("Combat System").clicked() {
+                        println!("Combat System opened");
+                    }
+                    if ui.button("Inventory System").clicked() {
+                        println!("Inventory System opened");
+                    }
+                    if ui.button("Dialogue System").clicked() {
+                        println!("Dialogue System opened");
+                    }
+                });
             });
         });
 
         // Top horizontal toolbar
         egui::TopBottomPanel::top("top_toolbar").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                if ui.button("Custom Tool").clicked() {
-                    // TODO: Custom tool logic here
-                    println!("Custom Tool (top toolbar) clicked");
+                // Render feature menus recursively
+                let menus = build_feature_menu();
+                for menu in &menus {
+                    self.render_menu_recursive(ui, menu);
                 }
+                ui.separator();
                 // Existing pixel asset tools
                 if ui.button("Generate 8-bit Sprite Sheet").clicked() {
                     generate_8bit_sprite_sheet();
@@ -314,6 +894,27 @@ impl FeatureToolGui {
                     build_pixel_ui_assets();
                 }
             });
+        });
+
+        // Modern API GUI layout: Sidebar + Split View
+        egui::SidePanel::left("api_sidebar").default_width(180.0).show(ctx, |ui| {
+            ui.heading("API Tools");
+            ui.separator();
+            if ui.button("🔌 Test Connection").clicked() {
+                println!("API connection test triggered");
+            }
+            if ui.button("🔄 Reload Schema").clicked() {
+                println!("API schema reload triggered");
+            }
+            if ui.button("📄 Open Docs").clicked() {
+                println!("Open API docs triggered");
+            }
+        });
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("API Results / Details");
+            ui.separator();
+            ui.label("Results, logs, or API responses will appear here.");
+            // TODO: Add dynamic content based on API actions
         });
 
         // API Tools Section
@@ -493,6 +1094,7 @@ impl FeatureToolGui {
             if ui.button("Open Group Finder Editor").clicked() { self.show_group_finder = true; }
             if ui.button("Open World Boss Editor").clicked() { self.show_world_boss = true; }
             if ui.button("Open Event Editor").clicked() { self.show_event = true; }
+            if ui.button("Open World Map/Planet Editor").clicked() { self.show_world_map = true; }
             if ui.button("Open Story Editor").clicked() { self.show_story = true; }
             if ui.button("Open Quest Editor").clicked() { self.show_quest = true; }
             if ui.button("Open Side Quest Editor").clicked() { self.show_side_quest = true; }
@@ -873,6 +1475,43 @@ impl FeatureToolGui {
                         }
                     }
                 }
+            });
+        }
+        if self.show_world_map {
+            egui::Window::new("World Map / Planet Editor").open(&mut self.show_world_map).show(ctx, |ui| {
+                ui.heading("World Map / Planet Editor");
+                ui.horizontal(|h| {
+                    if h.button("2D View").clicked() {
+                        // TODO: Switch to 2D view in WorldMapEditor
+                    }
+                    if h.button("3D View").clicked() {
+                        // TODO: Switch to 3D view in WorldMapEditor
+                    }
+                });
+                ui.separator();
+                ui.label("Region Management:");
+                ui.horizontal(|h| {
+                    if h.button("Load Region").clicked() {
+                        // TODO: Call WorldPartition::load_region
+                    }
+                    if h.button("Unload Region").clicked() {
+                        // TODO: Call WorldPartition::unload_region
+                    }
+                });
+                ui.separator();
+                ui.label("Naming Tools:");
+                ui.horizontal(|h| {
+                    if h.button("Name Continent").clicked() {
+                        // TODO: Open naming tool for continents
+                    }
+                    if h.button("Name Zone").clicked() {
+                        // TODO: Open naming tool for zones
+                    }
+                    if h.button("Name Subzone").clicked() {
+                        // TODO: Open naming tool for subzones
+                    }
+                });
+                // TODO: Add world map rendering and editing UI here
             });
         }
         if self.show_quest {

@@ -290,11 +290,11 @@ impl TheWidget for TheTraybarButton {
 
         if let Some(icon) = &self.icon {
             let utuple = self.dim.to_buffer_shrunk_utuple(&shrinker);
+            let x_offset = utuple.2.saturating_sub(icon.dim().width as usize) / 2;
+            let y_offset = utuple.3.saturating_sub(icon.dim().height as usize) / 2;
             let r = (
-                ((utuple.0 + (utuple.2 - icon.dim().width as usize) / 2) as i32
-                    + self.icon_offset.x) as usize,
-                ((utuple.1 + (utuple.3 - icon.dim().height as usize) / 2) as i32
-                    + self.icon_offset.y) as usize,
+                ((utuple.0 + x_offset) as i32 + self.icon_offset.x).max(0) as usize,
+                ((utuple.1 + y_offset) as i32 + self.icon_offset.y).max(0) as usize,
                 icon.dim().width as usize,
                 icon.dim().height as usize,
             );
@@ -302,11 +302,11 @@ impl TheWidget for TheTraybarButton {
                 .blend_slice(buffer.pixels_mut(), icon.pixels(), &r, stride);
         } else if let Some(icon) = ctx.ui.icon(&self.icon_name) {
             let utuple = self.dim.to_buffer_shrunk_utuple(&shrinker);
+            let x_offset = utuple.2.saturating_sub(icon.dim().width as usize) / 2;
+            let y_offset = utuple.3.saturating_sub(icon.dim().height as usize) / 2;
             let r = (
-                ((utuple.0 + (utuple.2 - icon.dim().width as usize) / 2) as i32
-                    + self.icon_offset.x) as usize,
-                ((utuple.1 + (utuple.3 - icon.dim().height as usize) / 2) as i32
-                    + self.icon_offset.y) as usize,
+                ((utuple.0 + x_offset) as i32 + self.icon_offset.x).max(0) as usize,
+                ((utuple.1 + y_offset) as i32 + self.icon_offset.y).max(0) as usize,
                 icon.dim().width as usize,
                 icon.dim().height as usize,
             );

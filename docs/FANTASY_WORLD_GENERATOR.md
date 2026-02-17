@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Generate world-scale content inspired by TownGeneratorOS-style procedural workflows:
+Generate world-scale content inspired by MapForge-style procedural workflows:
 - Continents
 - Countries
 - Capitals

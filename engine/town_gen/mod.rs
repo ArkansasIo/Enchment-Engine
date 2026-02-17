@@ -1,4 +1,5 @@
-//! Procedural Town Generator (Rust port of TownGeneratorOS)
+//! Procedural Town Generator (Rust port of MapForge)
+// Formerly TownGeneratorOS
 
 pub mod voronoi;
 pub mod city_map;

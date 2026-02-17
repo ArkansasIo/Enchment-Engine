@@ -304,7 +304,7 @@ pub fn generate_fantasy_world_map(settings: &FantasyMapSettings) -> FantasyWorld
         }
     }
 
-    let mut borders = Vec::new();
+    let mut borders: Vec<CountryBorder> = Vec::new();
     for a in &countries {
         let mut nearest = countries
             .iter()

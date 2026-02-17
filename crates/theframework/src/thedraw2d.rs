@@ -865,6 +865,9 @@ impl TheDraw2D {
                     let i = (x + rect.0 + glyph.x as usize) * 4
                         + (y + rect.1 + glyph.y as usize) * stride * 4;
                     let m = alphamap[x + y * metrics.width];
+                    if i + 3 >= frame.len() {
+                        continue;
+                    }
 
                     let background = &[frame[i], frame[i + 1], frame[i + 2], frame[i + 3]];
                     frame[i..i + 4].copy_from_slice(&self.mix_color(

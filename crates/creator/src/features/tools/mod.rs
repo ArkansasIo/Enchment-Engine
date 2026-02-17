@@ -2,3 +2,4 @@
 
 pub mod gui;
 pub mod logic;
+pub mod map_forge;

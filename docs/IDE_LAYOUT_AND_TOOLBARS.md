@@ -15,6 +15,7 @@ The editor uses an Unreal-style workspace:
 - `Edit`: Undo/Redo/Copy/Paste
 - `View`: Left/Right panel toggles, theme presets
 - `Tools`: 2D tools, 3D tools, town systems, fantasy world generation, RPG/MMORPG systems
+  - Includes `Editor Tools` and `All Tools` submenus so every registered tool can be selected from the menu API
 - `Build`: Play/Pause/Stop, export stubs
 - `Settings`: snap/grid/gizmos, IDE layout presets, feature matrix
 - `Window`: Content Browser, World Outliner, Details, Output Log, Blueprint
