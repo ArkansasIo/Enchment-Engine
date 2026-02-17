@@ -1,7 +1,7 @@
 # Enchentment Engine
 
 **Version:** 0.8.100  
-**Developer:** Markus Moenig  
+**Developer:** stephen delinejr
 **Website:** https://eldiron.com  
 **Source:** https://github.com/markusmoenig/Eldiron
 
