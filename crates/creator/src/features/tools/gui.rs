@@ -217,6 +217,8 @@ pub struct FeatureToolGui {
     show_class: bool,
     show_profession: bool,
     map_forge: MapForgeState,
+    /// Bottom panel state (Terminal, Debug, Output, Problems, Log)
+    pub bottom_panel: crate::features::tools::bottom_panel::BottomPanelState,
     // New RPG/JRPG/MMORPG data collections
     pub all_races: Vec<String>,
     pub all_classes: Vec<String>,
@@ -787,6 +789,7 @@ impl FeatureToolGui {
             item_desc: String::new(),
             item_value: 0,
             item_edit_idx: None,
+            bottom_panel: crate::features::tools::bottom_panel::BottomPanelState::new(),
         }
     }
 
@@ -917,20 +920,9 @@ impl FeatureToolGui {
             // TODO: Add dynamic content based on API actions
         });
 
-        // API Tools Section
-        ui.separator();
-        ui.heading("API Tools");
-        ui.horizontal(|ui| {
-            if ui.button("Test API Connection").clicked() {
-                println!("API connection test triggered");
-            }
-            if ui.button("Reload API Schema").clicked() {
-                println!("API schema reload triggered");
-            }
-            if ui.button("Open API Docs").clicked() {
-                println!("Open API docs triggered");
-            }
-        });
+
+        // Render the bottom panel (Terminal, Debug, Output, Problems, Log)
+        self.bottom_panel.ui(ctx);
 
         // Main MMORPG Tools Section
         egui::Window::new("MMORPG Tools").show(ctx, |ui| {

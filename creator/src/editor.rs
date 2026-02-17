@@ -245,7 +245,7 @@ impl Editor {
             left_names_layout.relayout(ctx);
         }
         if let Some(left_names_text_layout) = ui.get_text_layout("Left Tool Name Layout") {
-            left_names_text_layout.set_fixed_text_width((left_width - 70).max(120));
+            left_names_text_layout.set_fixed_text_width(8);
             left_names_text_layout.relayout(ctx);
         }
         if let Some(right_layout) = ui.get_layout("Right Tool Layout") {
@@ -595,7 +595,7 @@ impl Editor {
             left_tool_name_layout.set_margin(Vec4::new(4, 4, 4, 4));
             left_tool_name_layout.set_padding(3);
         }
-        left_tool_name_layout.set_fixed_text_width((left_width - 70).max(120));
+        left_tool_name_layout.set_fixed_text_width(8);
 
         self.populate_left_tool_name_layout(&mut left_tool_name_layout);
         tool_list_canvas.set_layout(left_tool_name_layout);
@@ -1116,13 +1116,13 @@ impl Editor {
             id: &str,
             status: &str,
             icon_name: &str,
-            selectable: bool,
+            _selectable: bool,
         ) {
-            let mut button = TheMenubarButton::new(TheId::named(id));
+            let mut button = TheTraybarButton::new(TheId::named(id));
             button.set_icon_name(icon_name.to_string());
+            button.set_text(left_label.to_string());
             button.set_status_text(status);
-            button.set_has_state(selectable);
-            layout.add_pair(left_label.to_string(), Box::new(button));
+            layout.add_pair(" ".to_string(), Box::new(button));
         }
 
         fn add_section_toggle(
@@ -4898,6 +4898,11 @@ impl TheTrait for Editor {
                             ctx,
                             crate::ide_panels::IdePanelKind::Blueprint,
                         );
+                        let launch = crate::features::launch_blueprint_editor();
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            launch.status_line,
+                        ));
                     } else if item_id.name == "MenuBlueprint::CreateCharacter" {
                         ctx.ui.save_file_requester(
                             TheId::named_with_id("CreateCharacterBlueprint", Uuid::new_v4()),
@@ -6430,11 +6435,23 @@ impl TheTrait for Editor {
                     } else if id.name == "Logo" {
                         redraw = true;
                     } else if id.name == "BlueprintEditor" || id.name == "OpenBlueprintEditor" {
-                        crate::features::blueprint_system::launch_blueprint_editor();
-                        _ = open::that("https://eldiron.com");
-                        ctx.ui
-                            .set_widget_state("Logo".to_string(), TheWidgetState::None);
+                        let launch = crate::features::launch_blueprint_editor();
+                        self.show_ide_panel_dialog(
+                            ui,
+                            ctx,
+                            crate::ide_panels::IdePanelKind::Blueprint,
+                        );
+                        ctx.ui.send(TheEvent::SetStatusText(
+                            TheId::empty(),
+                            launch.status_line,
+                        ));
+                        _ = open::that(launch.docs_url);
+                        ctx.ui.set_widget_state(
+                            "BlueprintEditor".to_string(),
+                            TheWidgetState::None,
+                        );
                         ctx.ui.clear_hover();
+                        redraw = true;
                     } else if id.name == "Patreon" {
                         _ = open::that("https://www.patreon.com/eldiron");
                         ctx.ui

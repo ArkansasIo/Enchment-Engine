@@ -29,7 +29,9 @@ pub fn render() {
 /// Features module: add feature logic here. Extend with more features as needed.
 
 pub mod blueprint_system;
-pub use blueprint_system::launch_blueprint_editor;
+pub use blueprint_system::{
+    BlueprintGuiApi, BlueprintLaunchInfo, Unreal5BlueprintGuiApi, launch_blueprint_editor,
+};
 
 /// Example feature stub
 pub fn example_feature() {
